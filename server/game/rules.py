@@ -58,6 +58,7 @@ def new_character(name: str, race: str, cls: str) -> dict:
         "hp": max_hp,
         "max_hp": max_hp,
         "gold": 30,
+        "fate": 1,  # очко судьбы: один раз спасает от смерти за забег
         "inventory": list(c["start_items"]),
         "spells": list(c.get("spells", [])),
         "location": "Врата подземелья Кар-Морд",

@@ -84,10 +84,28 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
     new_state = state_mod.apply_delta(dict(run.state), result.get("state_delta") or {})
     game_over = bool(result.get("game_over")) or new_state["hp"] <= 0
 
+    # Очко судьбы: один раз за забег смертельный исход превращается в чудом-выжил с 1 HP
+    if game_over and new_state.get("fate", 0) > 0:
+        new_state["fate"] = 0
+        new_state["hp"] = 1
+        game_over = False
+        result["narration"] = (result.get("narration", "").rstrip() +
+            "\n\nТьма уже тянет к тебе пальцы — но судьба вцепляется в ворот и выдёргивает "
+            "обратно. Ты жив. Едва. Второго чуда не будет.")
+
     _ART_TAGS = {"gates","stairs","skull","goblin","rat","undead","cultist","merchant",
                  "chest","altar","potion","well","torch","boss"}
     art = result.get("scene_art")
     art = art if art in _ART_TAGS else None
+    if art:
+        # не повторять арт, который уже был в последних 8 ходах
+        recent_art = {
+            t[0] for t in db.query(Turn.scene_art)
+            .filter(Turn.run_id == run.id, Turn.scene_art != None)  # noqa: E711
+            .order_by(Turn.id.desc()).limit(8).all()
+        }
+        if art in recent_art:
+            art = None
     turn = Turn(
         run_id=run.id,
         player_input=player_input,

@@ -18,7 +18,7 @@ if DATABASE_URL.startswith("postgres://"):
 FREE_TURNS_PER_DAY = int(os.getenv("FREE_TURNS_PER_DAY", "30"))
 CONTEXT_RECENT_TURNS = int(os.getenv("CONTEXT_RECENT_TURNS", "10"))
 SUMMARIZE_EVERY = int(os.getenv("SUMMARIZE_EVERY", "12"))
-MAX_TOKENS_TURN = int(os.getenv("MAX_TOKENS_TURN", "1200"))
+MAX_TOKENS_TURN = int(os.getenv("MAX_TOKENS_TURN", "2000"))
 
 # --- Dev mode: browser access without Telegram ---
 # ВРЕМЕННО включён по умолчанию на период отладки тестовой среды.

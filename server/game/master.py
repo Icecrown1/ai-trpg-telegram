@@ -2,6 +2,7 @@
 prompt caching and a rolling summary of older turns."""
 import json
 import re
+import sys
 
 import anthropic
 
@@ -148,7 +149,19 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -
 
         text = "".join(b.text for b in resp.content if b.type == "text")
         parsed = _extract_json(text)
-        parsed.setdefault("suggested_actions", [])
+        narration = str(parsed.get("narration", "")).strip()
+
+        # пустой/оборванный ответ (лимит токенов, сбой формата) — один повтор с пинком
+        if len(narration) < 15:
+            print(f"[GM RAW EMPTY] stop={resp.stop_reason} text={text[:400]!r}", file=sys.stderr)
+            messages.append({"role": "assistant", "content": text or "…"})
+            messages.append({"role": "user", "content":
+                "[СБОЙ ФОРМАТА] Твой прошлый ответ был пуст или оборван. Повтори ход ЗАНОВО: "
+                "полный JSON, narration 2-4 абзаца, 3-4 suggested_actions. Только JSON."})
+            continue
+
+        if not parsed.get("suggested_actions"):
+            parsed["suggested_actions"] = ["Осмотреться", "Идти дальше", "Прислушаться"]
         parsed.setdefault("state_delta", {})
         parsed.setdefault("scene_art", None)
         parsed.setdefault("game_over", False)
