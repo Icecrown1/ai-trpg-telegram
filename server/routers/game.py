@@ -74,6 +74,10 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
     new_state = state_mod.apply_delta(dict(run.state), result.get("state_delta") or {})
     game_over = bool(result.get("game_over")) or new_state["hp"] <= 0
 
+    _ART_TAGS = {"gates","stairs","skull","goblin","rat","undead","cultist","merchant",
+                 "chest","altar","potion","well","torch","boss"}
+    art = result.get("scene_art")
+    art = art if art in _ART_TAGS else None
     turn = Turn(
         run_id=run.id,
         player_input=player_input,
@@ -81,6 +85,7 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
         rolls=result.get("rolls", []),
         suggested_actions=result.get("suggested_actions", []),
         state_delta=result.get("state_delta", {}),
+        scene_art=art,
     )
     db.add(turn)
     run.state = new_state
@@ -117,6 +122,7 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
         "narration": result["narration"],
         "suggested_actions": result.get("suggested_actions", []),
         "rolls": result.get("rolls", []),
+        "scene_art": art,
     })
 
 
@@ -161,6 +167,7 @@ def me(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
                 "narration": t.narration,
                 "rolls": t.rolls,
                 "suggested_actions": t.suggested_actions,
+                "scene_art": t.scene_art,
             }
             for t in turns[-20:]
         ]

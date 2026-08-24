@@ -10,6 +10,14 @@ from .routers import game, stats
 
 Base.metadata.create_all(bind=engine)
 
+# мини-миграция для уже существующих баз (sqlite/postgres): добавить turns.scene_art
+try:
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE turns ADD COLUMN scene_art VARCHAR(32)"))
+except Exception:
+    pass  # колонка уже есть
+
 app = FastAPI(title="AI-TRPG Telegram Mini App")
 
 app.add_middleware(

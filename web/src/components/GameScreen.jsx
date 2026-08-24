@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import DiceOverlay from './DiceOverlay.jsx'
+import { ART } from '../art.js'
 
 function Roll({ r }) {
   const isD20 = r.sides === 20 && r.count === 1
@@ -90,6 +91,9 @@ export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }
             )}
             {t.rolls?.length > 0 && (
               <div>{t.rolls.map((r, j) => <Roll r={r} key={j} />)}</div>
+            )}
+            {t.scene_art && ART[t.scene_art] && (
+              <pre className="scene-art">{ART[t.scene_art]}</pre>
             )}
             <div className="log-narration">{t.narration}</div>
           </div>

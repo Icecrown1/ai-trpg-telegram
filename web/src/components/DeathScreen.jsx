@@ -1,8 +1,11 @@
+import { ART } from '../art.js'
+
 export default function DeathScreen({ run, onNewRun }) {
   const s = run.state
   return (
     <div className="screen">
       <div className="death">
+        <pre className="scene-art">{ART.skull}</pre>
         <h1>ТЫ МЁРТВ</h1>
         <div className="panel" style={{ width: '100%' }}>
           <span className="panel-title">Эпитафия</span>

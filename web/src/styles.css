@@ -269,3 +269,16 @@ input::placeholder { color: var(--amber-faint); }
   color: var(--amber-faint);
   padding: 2px 0 calc(4px + env(safe-area-inset-bottom));
 }
+
+/* --- Scene art --- */
+.scene-art {
+  display: block;
+  margin: 10px auto;
+  font-size: 12px;
+  line-height: 1.1;
+  color: var(--amber);
+  text-shadow: 0 0 6px rgba(255, 176, 0, 0.55);
+  text-align: left;
+  width: fit-content;
+  white-space: pre;
+}

@@ -135,6 +135,7 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -
         parsed = _extract_json(text)
         parsed.setdefault("suggested_actions", [])
         parsed.setdefault("state_delta", {})
+        parsed.setdefault("scene_art", None)
         parsed.setdefault("game_over", False)
         parsed.setdefault("death_cause", None)
         parsed["rolls"] = all_rolls

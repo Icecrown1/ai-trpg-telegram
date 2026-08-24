@@ -61,6 +61,7 @@ class Turn(Base):
     rolls = Column(JSON, default=list)          # dice results shown to the player
     suggested_actions = Column(JSON, default=list)
     state_delta = Column(JSON, default=dict)
+    scene_art = Column(String(32))  # метка ASCII-арта для клиента
     summarized = Column(Boolean, default=False)  # already folded into run.summary
 
     run = relationship("Run", back_populates="turns")
