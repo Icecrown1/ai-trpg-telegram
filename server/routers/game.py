@@ -15,11 +15,21 @@ router = APIRouter(prefix="/api", tags=["game"])
 
 def _server_version() -> str:
     import subprocess
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent.parent
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"], text=True,
-            stderr=subprocess.DEVNULL, cwd=__import__("os").path.dirname(__file__),
+            stderr=subprocess.DEVNULL, cwd=root,
         ).strip()
+    except Exception:
+        pass
+    try:  # git-бинаря нет в PATH (так бывает у workflow) — читаем .git руками
+        head = (root / ".git" / "HEAD").read_text().strip()
+        if head.startswith("ref:"):
+            ref = head.split(" ", 1)[1]
+            return (root / ".git" / ref).read_text().strip()[:7]
+        return head[:7]
     except Exception:
         return "unknown"
 
@@ -200,7 +210,13 @@ def new_run(body: NewRunIn, tg=Depends(get_tg_user), db: Session = Depends(get_d
     db.commit()
     db.refresh(run)
 
-    result = master.opening_scene(char)
+    try:
+        result = master.opening_scene(char)
+    except Exception:
+        user.turns_today = max(0, user.turns_today - 1)
+        run.status = "abandoned"
+        db.commit()
+        raise HTTPException(502, "Подземелье не отозвалось — сбой связи. Ход не списан, попробуй ещё раз.")
     return _apply_gm_result(db, run, "[начало забега]", result)
 
 
@@ -222,7 +238,13 @@ def make_turn(run_id: int, body: TurnIn, tg=Depends(get_tg_user), db: Session = 
         .all()
     )[::-1]
 
-    result = master.run_turn(run.state, run.summary or "", recent, body.text.strip())
+    try:
+        result = master.run_turn(run.state, run.summary or "", recent, body.text.strip())
+    except Exception:
+        # вернуть списанный ход и ответить по-человечески
+        user.turns_today = max(0, user.turns_today - 1)
+        db.commit()
+        raise HTTPException(502, "Мастер подземелья на миг потерял нить — сбой связи. Ход не списан, повтори.")
     return _apply_gm_result(db, run, body.text.strip(), result)
 
 

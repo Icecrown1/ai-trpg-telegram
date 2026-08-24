@@ -33,15 +33,9 @@ app.include_router(stats.router)
 
 @app.get("/api/health")
 def health():
-    import subprocess
     from .config import ALLOW_DEV_AUTH, GM_MODEL, ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN
-    try:
-        ver = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], text=True, stderr=subprocess.DEVNULL,
-            cwd=Path(__file__).resolve().parent,
-        ).strip()
-    except Exception:
-        ver = "unknown"
+    from .routers.game import _server_version
+    ver = _server_version()
     return {
         "ok": True,
         "version": ver,

@@ -72,21 +72,36 @@ def _build_messages(state: dict, summary: str, recent_turns: list, player_input:
     return messages
 
 
+def _clean_narration(text: str) -> str:
+    """Страховка от markdown и мусора в тексте хода."""
+    text = re.sub(r"```[a-z]*\n?", "", text)          # code fences
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)     # **жирный**
+    text = re.sub(r"__(.+?)__", r"\1", text)
+    text = re.sub(r"^#+\s*", "", text, flags=re.M)    # заголовки
+    return text.strip()
+
+
 def _extract_json(text: str) -> dict:
-    """The model is told to return bare JSON; be forgiving anyway."""
-    text = text.strip()
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        m = re.search(r"\{.*\}", text, re.DOTALL)
-        if m:
-            try:
-                return json.loads(m.group(0))
-            except json.JSONDecodeError:
-                pass
-    # last resort: treat the whole text as narration so the game never bricks
-    return {"narration": text or "…Тьма молчит. Попробуй ещё раз.", "suggested_actions": []}
+    """Модель обязана вернуть голый JSON, но страхуемся от любого мусора вокруг:
+    сканируем все '{' и берём ПОСЛЕДНИЙ валидный объект с ключом narration."""
+    stripped = re.sub(r"```(?:json)?", "", text)
+    decoder = json.JSONDecoder()
+    found = None
+    for i, ch in enumerate(stripped):
+        if ch != "{":
+            continue
+        try:
+            obj, _ = decoder.raw_decode(stripped[i:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and "narration" in obj:
+            found = obj  # последний валидный побеждает (проза до него отбрасывается)
+    if found is not None:
+        found["narration"] = _clean_narration(str(found.get("narration", "")))
+        return found
+    # совсем не JSON — отдаём вычищенный текст как повествование, игра не встаёт
+    return {"narration": _clean_narration(stripped) or "…Тьма молчит. Попробуй ещё раз.",
+            "suggested_actions": []}
 
 
 def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -> dict:
