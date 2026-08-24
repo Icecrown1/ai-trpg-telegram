@@ -231,6 +231,8 @@ def new_run(body: NewRunIn, tg=Depends(get_tg_user), db: Session = Depends(get_d
     try:
         result = master.opening_scene(char)
     except Exception:
+        import traceback
+        traceback.print_exc()
         user.turns_today = max(0, user.turns_today - 1)
         run.status = "abandoned"
         db.commit()
@@ -259,6 +261,8 @@ def make_turn(run_id: int, body: TurnIn, tg=Depends(get_tg_user), db: Session = 
     try:
         result = master.run_turn(run.state, run.summary or "", recent, body.text.strip())
     except Exception:
+        import traceback
+        traceback.print_exc()  # причина сбоя — в консоль Replit
         # вернуть списанный ход и ответить по-человечески
         user.turns_today = max(0, user.turns_today - 1)
         db.commit()

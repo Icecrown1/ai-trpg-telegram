@@ -3,6 +3,7 @@ prompt caching and a rolling summary of older turns."""
 import json
 import re
 import sys
+import time
 
 import anthropic
 
@@ -11,6 +12,26 @@ from ..dice import roll
 from .prompts import SYSTEM_PROMPT, WORLD_BIBLE, SUMMARY_PROMPT
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+_TRANSIENT = (429, 500, 502, 503, 529)
+
+
+def _create(**kwargs):
+    """Вызов API с автоповтором на временных сбоях (перегрузка, сеть)."""
+    last = None
+    for attempt in range(3):
+        try:
+            return client.messages.create(**kwargs)
+        except anthropic.APIConnectionError as e:
+            last = e
+        except anthropic.APIStatusError as e:
+            if e.status_code not in _TRANSIENT:
+                raise
+            last = e
+        wait = 1.5 * (attempt + 1)
+        print(f"[GM RETRY] attempt={attempt+1} err={type(last).__name__}: {last}", file=sys.stderr)
+        time.sleep(wait)
+    raise last
 
 ROLL_DICE_TOOL = {
     "name": "roll_dice",
@@ -112,7 +133,7 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -
     all_rolls = []
 
     for _ in range(6):  # tool-use loop, hard-capped
-        resp = client.messages.create(
+        resp = _create(
             model=GM_MODEL,
             max_tokens=MAX_TOKENS_TURN,
             system=_SYSTEM_BLOCKS,
@@ -195,7 +216,7 @@ def summarize(old_summary: str, turns: list) -> str:
         lines.append(f"[ПРЕДЫДУЩАЯ СВОДКА]\n{old_summary}")
     for t in turns:
         lines.append(f"Игрок: {t.player_input}\nМастер: {t.narration}")
-    resp = client.messages.create(
+    resp = _create(
         model=SUMMARY_MODEL,
         max_tokens=600,
         system=SUMMARY_PROMPT,
