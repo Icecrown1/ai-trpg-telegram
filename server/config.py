@@ -22,5 +22,6 @@ MAX_TOKENS_TURN = int(os.getenv("MAX_TOKENS_TURN", "1200"))
 
 # --- Dev mode: browser access without Telegram ---
 # ВРЕМЕННО включён по умолчанию на период отладки тестовой среды.
-# ПЕРЕД ПУБЛИЧНЫМ ТЕСТОМ: поменять дефолт на "0" (или задать ALLOW_DEV_AUTH=0 в Secrets).
-ALLOW_DEV_AUTH = os.getenv("ALLOW_DEV_AUTH", "1") == "1"
+# ПЕРЕД ПУБЛИЧНЫМ ТЕСТОМ: задать ALLOW_DEV_AUTH=0 в Secrets (выключает при любом формате).
+_dev_raw = os.getenv("ALLOW_DEV_AUTH", "1").strip().strip("\"'").lower()
+ALLOW_DEV_AUTH = _dev_raw not in ("0", "false", "no", "off")

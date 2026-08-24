@@ -24,7 +24,24 @@ app.include_router(game.router)
 
 @app.get("/api/health")
 def health():
-    return {"ok": True}
+    import subprocess
+    from .config import ALLOW_DEV_AUTH, GM_MODEL, ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN
+    try:
+        ver = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True, stderr=subprocess.DEVNULL,
+            cwd=Path(__file__).resolve().parent,
+        ).strip()
+    except Exception:
+        ver = "unknown"
+    return {
+        "ok": True,
+        "version": ver,
+        "dev_auth": ALLOW_DEV_AUTH,
+        "gm_model": GM_MODEL,
+        "anthropic_key_set": bool(ANTHROPIC_API_KEY),
+        "telegram_token_set": bool(TELEGRAM_BOT_TOKEN),
+        "frontend_built": (Path(__file__).resolve().parent.parent / "web" / "dist" / "index.html").exists(),
+    }
 
 
 # Serve the built frontend (web/dist), checked per-request: survives the case
