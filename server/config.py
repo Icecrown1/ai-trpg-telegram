@@ -20,5 +20,7 @@ CONTEXT_RECENT_TURNS = int(os.getenv("CONTEXT_RECENT_TURNS", "10"))
 SUMMARIZE_EVERY = int(os.getenv("SUMMARIZE_EVERY", "12"))
 MAX_TOKENS_TURN = int(os.getenv("MAX_TOKENS_TURN", "1200"))
 
-# --- Dev mode: set ALLOW_DEV_AUTH=1 to test in a browser without Telegram ---
-ALLOW_DEV_AUTH = os.getenv("ALLOW_DEV_AUTH", "0") == "1"
+# --- Dev mode: browser access without Telegram ---
+# ВРЕМЕННО включён по умолчанию на период отладки тестовой среды.
+# ПЕРЕД ПУБЛИЧНЫМ ТЕСТОМ: поменять дефолт на "0" (или задать ALLOW_DEV_AUTH=0 в Secrets).
+ALLOW_DEV_AUTH = os.getenv("ALLOW_DEV_AUTH", "1") == "1"
