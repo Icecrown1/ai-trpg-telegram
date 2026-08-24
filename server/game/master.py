@@ -109,12 +109,18 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -
             results = []
             for block in resp.content:
                 if block.type == "tool_use" and block.name == "roll_dice":
+                    sides = block.input.get("sides", 20)
+                    count = block.input.get("count", 1)
+                    dc = block.input.get("dc")
+                    # Принуждение: одиночный d20 — это всегда проверка, без СЛ не бывает.
+                    if dc is None and sides == 20 and count == 1:
+                        dc = 12
                     outcome = roll(
-                        sides=block.input.get("sides", 20),
-                        count=block.input.get("count", 1),
+                        sides=sides,
+                        count=count,
                         modifier=block.input.get("modifier", 0),
                         reason=block.input.get("reason", ""),
-                        dc=block.input.get("dc"),
+                        dc=dc,
                     )
                     all_rolls.append(outcome)
                     results.append({
