@@ -1,11 +1,11 @@
-import { ART } from '../art.js'
+import SceneArt from './SceneArt.jsx'
 
 export default function DeathScreen({ run, onNewRun }) {
   const s = run.state
   return (
     <div className="screen">
       <div className="death">
-        <pre className="scene-art">{ART.skull}</pre>
+        <SceneArt tag="skull" />
         <h1>ТЫ МЁРТВ</h1>
         <div className="panel" style={{ width: '100%' }}>
           <span className="panel-title">Эпитафия</span>
