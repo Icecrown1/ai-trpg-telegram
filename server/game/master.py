@@ -160,8 +160,7 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -
                 "полный JSON, narration 2-4 абзаца, 3-4 suggested_actions. Только JSON."})
             continue
 
-        if not parsed.get("suggested_actions"):
-            parsed["suggested_actions"] = ["Осмотреться", "Идти дальше", "Прислушаться"]
+        parsed.setdefault("suggested_actions", [])
         parsed.setdefault("state_delta", {})
         parsed.setdefault("scene_art", None)
         parsed.setdefault("game_over", False)
