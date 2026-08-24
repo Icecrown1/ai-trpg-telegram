@@ -1,0 +1,11 @@
+run = "bash start.sh"
+entrypoint = "server/main.py"
+modules = ["python-3.11", "nodejs-20"]
+
+[deployment]
+run = ["bash", "start.sh"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 8000
+externalPort = 80

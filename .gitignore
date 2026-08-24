@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+game.db
+node_modules/
+web/dist/
+.replit.nix
+venv/
+.DS_Store
