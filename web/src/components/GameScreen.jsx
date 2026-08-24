@@ -4,19 +4,25 @@ import DiceOverlay from './DiceOverlay.jsx'
 function Roll({ r }) {
   const isD20 = r.sides === 20 && r.count === 1
   const nat = r.rolls[0]
-  const cls = isD20 && nat === 20 ? 'crit' : isD20 && nat === 1 ? 'fail' : ''
+  const hasDc = typeof r.dc === 'number'
+  let cls = ''
+  if (isD20 && nat === 20) cls = 'crit'
+  else if (isD20 && nat === 1) cls = 'fail'
+  else if (hasDc) cls = r.success ? 'crit' : 'fail'
   const modStr = r.modifier ? (r.modifier > 0 ? `+${r.modifier}` : `${r.modifier}`) : ''
   return (
     <span className={`roll ${cls}`}>
       {r.reason && <>{r.reason}: </>}
       {r.count}d{r.sides}
       {modStr} → [{r.rolls.join(', ')}]{modStr} = <b>{r.total}</b>
+      {hasDc && <> против СЛ {r.dc} — <b>{r.success ? 'УСПЕХ' : 'ПРОВАЛ'}</b></>}
     </span>
   )
 }
 
 export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }) {
   const [text, setText] = useState('')
+  const [showInv, setShowInv] = useState(false)
   const [pendingRolls, setPendingRolls] = useState(null)
   const logRef = useRef(null)
   const s = run.state
@@ -57,6 +63,22 @@ export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }
           <span className="muted">ходы: {user.turns_left}</span>
         </div>
         <div className="hp-bar"><i style={{ width: `${hpPct}%` }} /></div>
+        <button
+          className="inv-toggle"
+          onClick={() => setShowInv((v) => !v)}
+        >
+          {showInv ? '▾' : '▸'} снаряжение ({s.inventory.length})
+        </button>
+        {showInv && (
+          <div className="inv">
+            {s.inventory.map((it, i) => <span key={i} className="inv-item">{it}</span>)}
+            {s.spells?.length > 0 && (
+              <div style={{ marginTop: 4 }}>
+                {s.spells.map((sp, i) => <span key={i} className="inv-item spell">✦ {sp}</span>)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="log panel" ref={logRef}>

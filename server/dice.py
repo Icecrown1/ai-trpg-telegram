@@ -3,12 +3,12 @@ never invented by the model. The player sees every roll."""
 import secrets
 
 
-def roll(sides: int, count: int = 1, modifier: int = 0, reason: str = "") -> dict:
+def roll(sides: int, count: int = 1, modifier: int = 0, reason: str = "", dc: int | None = None) -> dict:
     sides = max(2, min(int(sides), 100))
     count = max(1, min(int(count), 10))
     rolls = [secrets.randbelow(sides) + 1 for _ in range(count)]
     total = sum(rolls) + int(modifier)
-    return {
+    result = {
         "sides": sides,
         "count": count,
         "modifier": int(modifier),
@@ -16,6 +16,13 @@ def roll(sides: int, count: int = 1, modifier: int = 0, reason: str = "") -> dic
         "total": total,
         "reason": reason or "",
     }
+    if dc is not None:
+        try:
+            result["dc"] = int(dc)
+            result["success"] = total >= int(dc)
+        except (TypeError, ValueError):
+            pass
+    return result
 
 
 def roll_3d6() -> int:

@@ -24,6 +24,11 @@ ROLL_DICE_TOOL = {
             "count": {"type": "integer", "description": "Сколько кубиков, по умолчанию 1"},
             "modifier": {"type": "integer", "description": "Модификатор к сумме"},
             "reason": {"type": "string", "description": "Что проверяется, по-русски, коротко"},
+            "dc": {
+                "type": "integer",
+                "description": "Сложность проверки (DC) для d20-проверок. Обязательно для проверок "
+                               "успех/провал — игрок видит её. Не указывай для бросков урона.",
+            },
         },
         "required": ["sides", "reason"],
     },
@@ -109,6 +114,7 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -
                         count=block.input.get("count", 1),
                         modifier=block.input.get("modifier", 0),
                         reason=block.input.get("reason", ""),
+                        dc=block.input.get("dc"),
                     )
                     all_rolls.append(outcome)
                     results.append({
@@ -139,8 +145,12 @@ def opening_scene(state: dict) -> dict:
     """First narration of a fresh run."""
     return run_turn(
         state, "", [],
-        "[СТАРТ ЗАБЕГА] Опиши вход героя в подземелье: атмосфера, первая развилка "
-        "или угроза. Брось кубик только если это оправдано.",
+        "[СТАРТ ЗАБЕГА] Открывающая сцена, три части: "
+        "1) Почему герой здесь — одна цепкая фраза о цели (золотая жила, долг, изгнание — сообразно классу). "
+        "2) Снаряжение: перечисли предметы из инвентаря и заклинания (если есть) в тексте, "
+        "чтобы игрок знал свой арсенал с первого хода. "
+        "3) Вход в подземелье и первая развилка или деталь, требующая решения. "
+        "Кубик не бросай — угроз в первой сцене нет.",
     )
 
 
