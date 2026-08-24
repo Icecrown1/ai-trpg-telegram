@@ -262,3 +262,10 @@ input::placeholder { color: var(--amber-faint); }
   font-size: 12px;
 }
 .inv-item.spell { color: var(--amber); border-style: dashed; }
+
+.version {
+  text-align: center;
+  font-size: 10px;
+  color: var(--amber-faint);
+  padding: 2px 0 calc(4px + env(safe-area-inset-bottom));
+}

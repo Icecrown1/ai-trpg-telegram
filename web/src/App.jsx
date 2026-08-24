@@ -121,5 +121,13 @@ export default function App() {
     )
   }
 
-  return <div className="crt">{screen}</div>
+  return (
+    <div className="crt">
+      {screen}
+      <p className="version">
+        клиент {typeof __CLIENT_VERSION__ !== 'undefined' ? __CLIENT_VERSION__ : 'dev'}
+        {meta?.server_version && <> · сервер {meta.server_version}</>}
+      </p>
+    </div>
+  )
 }

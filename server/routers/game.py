@@ -13,6 +13,20 @@ from ..game import rules, state as state_mod, master
 router = APIRouter(prefix="/api", tags=["game"])
 
 
+def _server_version() -> str:
+    import subprocess
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True,
+            stderr=subprocess.DEVNULL, cwd=__import__("os").path.dirname(__file__),
+        ).strip()
+    except Exception:
+        return "unknown"
+
+
+SERVER_VERSION = _server_version()
+
+
 # ---------- helpers ----------
 
 def _get_or_create_user(db: Session, tg: dict) -> User:
@@ -129,6 +143,7 @@ def meta():
         "races": {k: v["name"] for k, v in rules.RACES.items()},
         "classes": {k: {"name": v["name"], "desc": v["desc"]} for k, v in rules.CLASSES.items()},
         "free_turns_per_day": FREE_TURNS_PER_DAY,
+        "server_version": SERVER_VERSION,
     }
 
 
