@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from .db import Base, engine
 from . import models  # noqa: F401 — register models before create_all
-from .routers import game
+from .routers import game, stats
 
 Base.metadata.create_all(bind=engine)
 
@@ -20,6 +20,7 @@ app.add_middleware(
 )
 
 app.include_router(game.router)
+app.include_router(stats.router)
 
 
 @app.get("/api/health")
