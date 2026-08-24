@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import DiceOverlay from './DiceOverlay.jsx'
 import SceneArt from './SceneArt.jsx'
 
+const STAT_RU = { STR: 'СИЛ', DEX: 'ЛОВ', CON: 'ВЫН', INT: 'ИНТ', WIS: 'МДР', CHA: 'ХАР' }
+const mod = (v) => { const m = Math.floor((v - 10) / 2); return m >= 0 ? `+${m}` : `${m}` }
+
 function Roll({ r }) {
   const isD20 = r.sides === 20 && r.count === 1
   const nat = r.rolls[0]
@@ -69,10 +72,15 @@ export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }
           className="inv-toggle"
           onClick={() => setShowInv((v) => !v)}
         >
-          {showInv ? '▾' : '▸'} снаряжение ({s.inventory.length})
+          {showInv ? '▾' : '▸'} персонаж и снаряжение ({s.inventory.length})
         </button>
         {showInv && (
           <div className="inv">
+            <div className="char-stats">
+              {Object.entries(s.stats || {}).map(([k, v]) => (
+                <span key={k}>{STAT_RU[k] || k} <b>{v}</b> <i>({mod(v)})</i></span>
+              ))}
+            </div>
             {s.inventory.map((it, i) => <span key={i} className="inv-item">{it}</span>)}
             {s.spells?.length > 0 && (
               <div style={{ marginTop: 4 }}>
