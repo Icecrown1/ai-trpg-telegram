@@ -7,11 +7,22 @@ import time
 
 import anthropic
 
-from ..config import ANTHROPIC_API_KEY, GM_MODEL, SUMMARY_MODEL, MAX_TOKENS_TURN
+from ..config import (ANTHROPIC_API_KEY, OPENAI_API_KEY, GM_PROVIDER,
+                      GM_MODEL, SUMMARY_MODEL, MAX_TOKENS_TURN)
 from ..dice import roll
 from .prompts import SYSTEM_PROMPT, WORLD_BIBLE, SUMMARY_PROMPT
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+_openai = None
+
+
+def _openai_client():
+    global _openai
+    if _openai is None:
+        import openai
+        _openai = openai.OpenAI(api_key=OPENAI_API_KEY)
+    return _openai
 
 _TRANSIENT = (429, 500, 502, 503, 529)
 
@@ -126,9 +137,115 @@ def _extract_json(text: str) -> dict:
             "suggested_actions": []}
 
 
+OPENAI_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "roll_dice",
+        "description": ROLL_DICE_TOOL["description"],
+        "parameters": ROLL_DICE_TOOL["input_schema"],
+    },
+}
+
+
+def _openai_create(**kwargs):
+    import openai
+    last = None
+    for attempt in range(3):
+        try:
+            return _openai_client().chat.completions.create(**kwargs)
+        except openai.APIConnectionError as e:
+            last = e
+        except openai.APIStatusError as e:
+            if e.status_code not in _TRANSIENT:
+                raise
+            last = e
+        print(f"[GM RETRY openai] attempt={attempt+1} err={type(last).__name__}: {last}", file=sys.stderr)
+        time.sleep(1.5 * (attempt + 1))
+    raise last
+
+
+def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input: str) -> dict:
+    intro = []
+    if summary:
+        intro.append(f"[СВОДКА ПРОШЛЫХ СОБЫТИЙ]\n{summary}")
+    intro.append(f"[СОСТОЯНИЕ ПЕРСОНАЖА]\n{_state_brief(state)}")
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + WORLD_BIBLE},
+        {"role": "user", "content": "\n\n".join(intro)},
+        {"role": "assistant", "content": "Принято. Жду действий игрока."},
+    ]
+    for t in recent_turns:
+        messages.append({"role": "user", "content": t.player_input})
+        messages.append({"role": "assistant", "content": t.narration})
+    messages.append({"role": "user", "content": player_input})
+
+    all_rolls = []
+    for _ in range(6):
+        resp = _openai_create(
+            model=GM_MODEL,
+            max_completion_tokens=MAX_TOKENS_TURN,
+            tools=[OPENAI_TOOL],
+            messages=messages,
+        )
+        msg = resp.choices[0].message
+
+        if msg.tool_calls:
+            messages.append({
+                "role": "assistant",
+                "content": msg.content or "",
+                "tool_calls": [
+                    {"id": tc.id, "type": "function",
+                     "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                    for tc in msg.tool_calls
+                ],
+            })
+            for tc in msg.tool_calls:
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                sides = args.get("sides", 20)
+                count = args.get("count", 1)
+                dc = args.get("dc")
+                if dc is None and sides == 20 and count == 1:
+                    dc = 12
+                outcome = roll(sides=sides, count=count,
+                               modifier=args.get("modifier", 0),
+                               reason=args.get("reason", ""), dc=dc)
+                all_rolls.append(outcome)
+                messages.append({"role": "tool", "tool_call_id": tc.id,
+                                 "content": json.dumps(outcome, ensure_ascii=False)})
+            continue
+
+        text = msg.content or ""
+        parsed = _extract_json(text)
+        narration = str(parsed.get("narration", "")).strip()
+        if len(narration) < 15:
+            print(f"[GM RAW EMPTY openai] finish={resp.choices[0].finish_reason} text={text[:400]!r}",
+                  file=sys.stderr)
+            messages.append({"role": "assistant", "content": text or "…"})
+            messages.append({"role": "user", "content":
+                "[СБОЙ ФОРМАТА] Твой прошлый ответ был пуст или оборван. Повтори ход ЗАНОВО: "
+                "полный JSON, narration 2-4 абзаца, 3-4 suggested_actions. Только JSON."})
+            continue
+        parsed.setdefault("suggested_actions", [])
+        parsed.setdefault("state_delta", {})
+        parsed.setdefault("scene_art", None)
+        parsed.setdefault("game_over", False)
+        parsed.setdefault("death_cause", None)
+        parsed["rolls"] = all_rolls
+        return parsed
+
+    return {"narration": "Подземелье замерло в нерешительности. Повтори действие.",
+            "suggested_actions": [], "state_delta": {}, "scene_art": None,
+            "game_over": False, "death_cause": None, "rolls": all_rolls}
+
+
 def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -> dict:
     """One GM turn. Returns dict: narration, suggested_actions, state_delta,
     game_over, death_cause, rolls (list of dice results)."""
+    if GM_PROVIDER == "openai":
+        return _run_turn_openai(state, summary, recent_turns, player_input)
     messages = _build_messages(state, summary, recent_turns, player_input)
     all_rolls = []
 
@@ -216,10 +333,28 @@ def summarize(old_summary: str, turns: list) -> str:
         lines.append(f"[ПРЕДЫДУЩАЯ СВОДКА]\n{old_summary}")
     for t in turns:
         lines.append(f"Игрок: {t.player_input}\nМастер: {t.narration}")
+    if GM_PROVIDER == "openai":
+        resp = _openai_create(
+            model=SUMMARY_MODEL, max_completion_tokens=600,
+            messages=[{"role": "system", "content": SUMMARY_PROMPT},
+                      {"role": "user", "content": "\n\n".join(lines)}],
+        )
+        return (resp.choices[0].message.content or "").strip()
     resp = _create(
         model=SUMMARY_MODEL,
         max_tokens=600,
         system=SUMMARY_PROMPT,
         messages=[{"role": "user", "content": "\n\n".join(lines)}],
     )
+    return "".join(b.text for b in resp.content if b.type == "text").strip()
+
+
+def ping() -> str:
+    """Короткий живой вызов текущего провайдера — для /api/gm-check."""
+    if GM_PROVIDER == "openai":
+        resp = _openai_create(model=GM_MODEL, max_completion_tokens=16,
+                              messages=[{"role": "user", "content": "Ответь одним словом: жив"}])
+        return (resp.choices[0].message.content or "").strip()
+    resp = _create(model=GM_MODEL, max_tokens=16,
+                   messages=[{"role": "user", "content": "Ответь одним словом: жив"}])
     return "".join(b.text for b in resp.content if b.type == "text").strip()

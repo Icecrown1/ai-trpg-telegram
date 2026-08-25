@@ -33,15 +33,18 @@ app.include_router(stats.router)
 
 @app.get("/api/health")
 def health():
-    from .config import ALLOW_DEV_AUTH, GM_MODEL, ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN
+    from .config import (ALLOW_DEV_AUTH, GM_MODEL, GM_PROVIDER,
+                         ANTHROPIC_API_KEY, OPENAI_API_KEY, TELEGRAM_BOT_TOKEN)
     from .routers.game import _server_version
     ver = _server_version()
     return {
         "ok": True,
         "version": ver,
         "dev_auth": ALLOW_DEV_AUTH,
+        "gm_provider": GM_PROVIDER,
         "gm_model": GM_MODEL,
         "anthropic_key_set": bool(ANTHROPIC_API_KEY),
+        "openai_key_set": bool(OPENAI_API_KEY),
         "telegram_token_set": bool(TELEGRAM_BOT_TOKEN),
         "frontend_built": (Path(__file__).resolve().parent.parent / "web" / "dist" / "index.html").exists(),
     }
@@ -51,22 +54,13 @@ def health():
 def gm_check():
     """Живой тест связи с мастером: короткий реальный вызов API.
     Открой в браузере — увидишь либо ok, либо точную причину сбоя."""
-    from .config import GM_MODEL
-    from .game.master import client
+    from .config import GM_MODEL, GM_PROVIDER
+    from .game import master
     try:
-        resp = client.messages.create(
-            model=GM_MODEL, max_tokens=16,
-            messages=[{"role": "user", "content": "Ответь одним словом: жив"}],
-        )
-        answer = "".join(b.text for b in resp.content if b.type == "text").strip()
-        return {"ok": True, "model": GM_MODEL, "answer": answer}
+        return {"ok": True, "provider": GM_PROVIDER, "model": GM_MODEL, "answer": master.ping()}
     except Exception as e:
-        return {
-            "ok": False,
-            "model": GM_MODEL,
-            "error_type": type(e).__name__,
-            "error": str(e)[:600],
-        }
+        return {"ok": False, "provider": GM_PROVIDER, "model": GM_MODEL,
+                "error_type": type(e).__name__, "error": str(e)[:600]}
 
 
 # Serve the built frontend (web/dist), checked per-request: survives the case

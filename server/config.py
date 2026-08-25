@@ -2,10 +2,17 @@ import os
 
 # --- Core secrets (set in Replit Secrets / .env) ---
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+# --- Provider: anthropic (по умолчанию) или openai ---
+GM_PROVIDER = os.getenv("GM_PROVIDER", "anthropic").strip().lower()
 
 # --- Models ---
 GM_MODEL = os.getenv("GM_MODEL", "claude-haiku-4-5")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+if GM_PROVIDER == "openai" and GM_MODEL.startswith("claude"):
+    GM_MODEL = OPENAI_MODEL  # GM_MODEL в секретах остался клодовским — берём openai-дефолт
 SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", GM_MODEL)
 
 # --- Database: sqlite locally, postgres on Replit via DATABASE_URL ---
