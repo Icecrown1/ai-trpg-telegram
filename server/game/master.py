@@ -181,12 +181,16 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
 
     all_rolls = []
     for _ in range(6):
-        resp = _openai_create(
+        kwargs = dict(
             model=GM_MODEL,
-            max_completion_tokens=MAX_TOKENS_TURN,
+            # у reasoning-моделей токены размышлений едят тот же лимит — даём запас
+            max_completion_tokens=MAX_TOKENS_TURN * 2,
             tools=[OPENAI_TOOL],
             messages=messages,
         )
+        if GM_MODEL.startswith(("gpt-5", "o1", "o3", "o4")):
+            kwargs["reasoning_effort"] = "low"
+        resp = _openai_create(**kwargs)
         msg = resp.choices[0].message
 
         if msg.tool_calls:
@@ -218,6 +222,14 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
             continue
 
         text = msg.content or ""
+        if not text.strip():
+            print(f"[GM RAW EMPTY openai] finish={resp.choices[0].finish_reason} (no content)",
+                  file=sys.stderr)
+            messages.append({"role": "user", "content":
+                "[СБОЙ ФОРМАТА] Ответ пришёл пустым. Заверши ход ЗАНОВО: полный JSON, "
+                "narration с исходом всех уже брошенных кубиков, state_delta с уроном, "
+                "3-4 suggested_actions. Только JSON."})
+            continue
         parsed = _extract_json(text)
         narration = str(parsed.get("narration", "")).strip()
         if len(narration) < 15:
@@ -286,6 +298,14 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -
             continue
 
         text = "".join(b.text for b in resp.content if b.type == "text")
+        if not text.strip():
+            print(f"[GM RAW EMPTY] stop={resp.stop_reason} (no content)", file=sys.stderr)
+            messages.append({"role": "assistant", "content": "…"})
+            messages.append({"role": "user", "content":
+                "[СБОЙ ФОРМАТА] Ответ пришёл пустым. Заверши ход ЗАНОВО: полный JSON, "
+                "narration с исходом всех уже брошенных кубиков, state_delta с уроном, "
+                "3-4 suggested_actions. Только JSON."})
+            continue
         parsed = _extract_json(text)
         narration = str(parsed.get("narration", "")).strip()
 
