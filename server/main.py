@@ -47,6 +47,28 @@ def health():
     }
 
 
+@app.get("/api/gm-check")
+def gm_check():
+    """Живой тест связи с мастером: короткий реальный вызов API.
+    Открой в браузере — увидишь либо ok, либо точную причину сбоя."""
+    from .config import GM_MODEL
+    from .game.master import client
+    try:
+        resp = client.messages.create(
+            model=GM_MODEL, max_tokens=16,
+            messages=[{"role": "user", "content": "Ответь одним словом: жив"}],
+        )
+        answer = "".join(b.text for b in resp.content if b.type == "text").strip()
+        return {"ok": True, "model": GM_MODEL, "answer": answer}
+    except Exception as e:
+        return {
+            "ok": False,
+            "model": GM_MODEL,
+            "error_type": type(e).__name__,
+            "error": str(e)[:600],
+        }
+
+
 # Serve the built frontend (web/dist), checked per-request: survives the case
 # when the build finishes after the server has already started.
 DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
