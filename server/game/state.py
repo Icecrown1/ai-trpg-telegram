@@ -47,6 +47,17 @@ def apply_delta(state: dict, delta: dict) -> dict:
         except (TypeError, ValueError):
             pass
 
+    if isinstance(delta.get("scene"), dict):
+        sc = delta["scene"]
+        clean = {}
+        if isinstance(sc.get("place"), str):
+            clean["place"] = sc["place"][:80]
+        for key in ("exits", "objects", "beings"):
+            if isinstance(sc.get(key), list):
+                clean[key] = [str(x)[:60] for x in sc[key][:8] if isinstance(x, (str, int))]
+        if clean:
+            state["scene"] = {**state.get("scene", {}), **clean}
+
     if isinstance(delta.get("flags"), dict):
         state.setdefault("flags", {})
         for k, v in list(delta["flags"].items())[:10]:

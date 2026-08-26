@@ -114,6 +114,7 @@ def _state_brief(state: dict) -> str:
             "характеристики": state["stats"], "инвентарь": state["inventory"],
             "заклинания": state.get("spells", []),
             "локация": state["location"], "ярус": state["depth"],
+            "сцена": state.get("scene", {}),
             "флаги": state.get("flags", {}),
         },
         ensure_ascii=False,

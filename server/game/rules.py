@@ -62,6 +62,8 @@ def new_character(name: str, race: str, cls: str) -> dict:
         "inventory": list(c["start_items"]),
         "spells": list(c.get("spells", [])),
         "location": "Врата подземелья Кар-Морд",
+        "scene": {"place": "Врата подземелья Кар-Морд",
+                  "exits": ["внутрь, за врата"], "objects": [], "beings": []},
         "depth": 1,
         "flags": {},
     }
