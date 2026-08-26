@@ -55,7 +55,13 @@ ROLL_DICE_TOOL = {
         "properties": {
             "sides": {"type": "integer", "description": "Граней у кубика (например 20, 6)"},
             "count": {"type": "integer", "description": "Сколько кубиков, по умолчанию 1"},
-            "modifier": {"type": "integer", "description": "Модификатор к сумме"},
+            "stat": {
+                "type": "string", "enum": ["STR", "DEX", "CON", "INT", "WIS", "CHA"],
+                "description": "Какая характеристика персонажа проверяется. Сервер САМ добавит "
+                               "модификатор из листа персонажа. Обязательно для d20-проверок.",
+            },
+            "modifier": {"type": "integer", "description": "ТОЛЬКО ситуативный бонус/штраф от -3 до +3 "
+                               "(подходящий предмет, выгодная позиция). Не дублируй характеристику."},
             "reason": {"type": "string", "description": "Что проверяется, по-русски, коротко"},
             "dc": {
                 "type": "integer",
@@ -66,6 +72,32 @@ ROLL_DICE_TOOL = {
         "required": ["sides", "reason"],
     },
 }
+
+_STAT_RU = {"STR": "СИЛ", "DEX": "ЛОВ", "CON": "ВЫН", "INT": "ИНТ", "WIS": "МДР", "CHA": "ХАР"}
+
+
+def _exec_roll(args: dict, state: dict) -> dict:
+    """Выполнение броска: модификатор характеристики берётся из листа персонажа,
+    модель может добавить лишь ситуативные ±3."""
+    sides = args.get("sides", 20)
+    count = args.get("count", 1)
+    dc = args.get("dc")
+    if dc is None and sides == 20 and count == 1:
+        dc = 12
+    situational = 0
+    try:
+        situational = max(-3, min(3, int(args.get("modifier", 0) or 0)))
+    except (TypeError, ValueError):
+        pass
+    stat = args.get("stat")
+    stat_mod = 0
+    reason = args.get("reason", "")
+    if stat in _STAT_RU:
+        score = int((state.get("stats") or {}).get(stat, 10))
+        stat_mod = (score - 10) // 2
+        reason = f"{reason} ({_STAT_RU[stat]})" if reason else f"Проверка {_STAT_RU[stat]}"
+    return roll(sides=sides, count=count, modifier=stat_mod + situational, reason=reason, dc=dc)
+
 
 _SYSTEM_BLOCKS = [
     {"type": "text", "text": SYSTEM_PROMPT},
@@ -208,14 +240,7 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                sides = args.get("sides", 20)
-                count = args.get("count", 1)
-                dc = args.get("dc")
-                if dc is None and sides == 20 and count == 1:
-                    dc = 12
-                outcome = roll(sides=sides, count=count,
-                               modifier=args.get("modifier", 0),
-                               reason=args.get("reason", ""), dc=dc)
+                outcome = _exec_roll(args, state)
                 all_rolls.append(outcome)
                 messages.append({"role": "tool", "tool_call_id": tc.id,
                                  "content": json.dumps(outcome, ensure_ascii=False)})
@@ -275,19 +300,7 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -
             results = []
             for block in resp.content:
                 if block.type == "tool_use" and block.name == "roll_dice":
-                    sides = block.input.get("sides", 20)
-                    count = block.input.get("count", 1)
-                    dc = block.input.get("dc")
-                    # Принуждение: одиночный d20 — это всегда проверка, без СЛ не бывает.
-                    if dc is None and sides == 20 and count == 1:
-                        dc = 12
-                    outcome = roll(
-                        sides=sides,
-                        count=count,
-                        modifier=block.input.get("modifier", 0),
-                        reason=block.input.get("reason", ""),
-                        dc=dc,
-                    )
+                    outcome = _exec_roll(block.input, state)
                     all_rolls.append(outcome)
                     results.append({
                         "type": "tool_result",
