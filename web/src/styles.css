@@ -302,3 +302,21 @@ input::placeholder { color: var(--amber-faint); }
 }
 .char-stats b { color: var(--amber); }
 .char-stats i { color: var(--amber-dim); font-style: normal; font-size: 11px; }
+
+/* --- Фикс срезанных заголовков панелей --- */
+.log-outer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 4px 10px 12px;
+}
+.log-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--amber-faint) transparent;
+}
+/* контейнеры со скроллом: воздух сверху, чтобы плавающий титул первой панели не резался */
+.log { padding-top: 12px; }

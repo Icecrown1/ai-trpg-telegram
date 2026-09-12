@@ -101,8 +101,9 @@ export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }
         )}
       </div>
 
-      <div className="log panel" ref={logRef}>
+      <div className="panel log-outer">
         <span className="panel-title">{s.location}</span>
+        <div className="log-scroll" ref={logRef}>
         {log.map((t, i) => (
           <div className="log-entry" key={i}>
             {t.player_input !== '[начало забега]' && (
@@ -117,6 +118,7 @@ export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }
         ))}
         {busy && <div className="typing">Мастер подземелья думает</div>}
         {error && <p className="error">{error}</p>}
+        </div>
       </div>
 
       <div className="actions">
