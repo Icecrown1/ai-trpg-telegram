@@ -1,22 +1,26 @@
 import { useEffect, useState } from 'react'
 import { api, haptic } from './api.js'
 import CharacterCreate from './components/CharacterCreate.jsx'
+import CityScreen from './components/CityScreen.jsx'
 import GameScreen from './components/GameScreen.jsx'
 import DeathScreen, { ExtractScreen } from './components/DeathScreen.jsx'
 
 export default function App() {
   const [meta, setMeta] = useState(null)
   const [user, setUser] = useState(null)
+  const [city, setCity] = useState(null)
+  const [creating, setCreating] = useState(false)
   const [run, setRun] = useState(null) // { run_id, status, state, turn_count, log }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [booted, setBooted] = useState(false)
 
   useEffect(() => {
-    Promise.all([api.meta(), api.me()])
-      .then(([m, me]) => {
+    Promise.all([api.meta(), api.me(), api.city()])
+      .then(([m, me, c]) => {
         setMeta(m)
         setUser(me.user)
+        setCity(c)
         if (me.run) setRun(me.run)
       })
       .catch((e) => setError(e.message))
@@ -34,6 +38,8 @@ export default function App() {
     if (payload.last?.rolls?.length) haptic('medium')
   }
 
+  const refreshCity = () => api.city().then(setCity).catch(() => {})
+
   const handleCreate = async (body) => {
     setBusy(true)
     setError('')
@@ -41,11 +47,29 @@ export default function App() {
       const payload = await api.newRun(body)
       refreshTurnsLeft()
       mergeTurn(payload)
+      setCreating(false)
+      refreshCity()
     } catch (e) {
       setError(e.message)
     } finally {
       setBusy(false)
     }
+  }
+
+  const handleSendSeeker = (seekerId) => handleCreate({ seeker_id: seekerId })
+
+  const handleBuild = async (building) => {
+    setBusy(true); setError('')
+    try { setCity(await api.build(building)); refreshCity() }
+    catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }
+
+  const handleHire = async (name) => {
+    setBusy(true); setError('')
+    try { setCity(await api.hire(name)) }
+    catch (e) { setError(e.message) }
+    finally { setBusy(false) }
   }
 
   const handleTurn = async (text) => {
@@ -102,14 +126,23 @@ export default function App() {
   }
 
   let screen
-  if (!run) {
-    screen = (
+  if (!run && !creating) {
+    screen = city ? (
+      <CityScreen city={city} user={user} busy={busy} error={error}
+        onSend={handleSendSeeker} onNewSeeker={() => { setCreating(true); setError('') }}
+        onBuild={handleBuild} onHire={handleHire} />
+    ) : (
       <CharacterCreate meta={meta} user={user} busy={busy} error={error} onCreate={handleCreate} />
     )
+  } else if (!run && creating) {
+    screen = (
+      <CharacterCreate meta={meta} user={user} busy={busy} error={error} onCreate={handleCreate}
+        onBack={() => setCreating(false)} />
+    )
   } else if (run.status === 'dead') {
-    screen = <DeathScreen run={run} onNewRun={() => { setRun(null); setError('') }} />
+    screen = <DeathScreen run={run} onNewRun={() => { setRun(null); setError(''); refreshCity() }} />
   } else if (run.status === 'extracted') {
-    screen = <ExtractScreen run={run} hauled={run.hauled} onNewRun={() => { setRun(null); setError('') }} />
+    screen = <ExtractScreen run={run} hauled={run.hauled} onNewRun={() => { setRun(null); setError(''); refreshCity() }} />
   } else {
     screen = (
       <GameScreen

@@ -8,7 +8,7 @@ const TITLE = String.raw`
  ██║  ██╗██║  ██║██║  ██║      ██║ ╚═╝ ██║╚██████╔╝██║  ██║██████╔╝
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝      ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝`
 
-export default function CharacterCreate({ meta, user, busy, error, onCreate }) {
+export default function CharacterCreate({ meta, user, busy, error, onCreate, onBack }) {
   const [name, setName] = useState('')
   const [race, setRace] = useState('human')
   const [cls, setCls] = useState('fighter')
@@ -87,6 +87,11 @@ export default function CharacterCreate({ meta, user, busy, error, onCreate }) {
       <p className="muted" style={{ textAlign: 'center' }}>
         Характеристики бросаются честными 3d6. Смерть окончательна.
       </p>
+      {onBack && (
+        <button className="muted" style={{ border: 'none', alignSelf: 'center', fontSize: 12 }} onClick={onBack}>
+          ← вернуться в город
+        </button>
+      )}
     </div>
   )
 }

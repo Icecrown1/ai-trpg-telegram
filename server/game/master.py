@@ -116,6 +116,11 @@ def _state_brief(state: dict) -> str:
             "заклинания": state.get("spells", []),
             "локация": state["location"], "ярус": state["depth"],
             "сцена": state.get("scene", {}),
+            "партия": [
+                {"имя": m.get("name"), "класс": m.get("cls"),
+                 "hp": f'{m.get("hp")}/{m.get("max_hp")}', "преданность": m.get("loyalty", 0)}
+                for m in state.get("party", [])
+            ],
             "рюкзак": {
                 "занято": backpack_load((state.get("backpack") or {}).get("res")),
                 "вместимость": (state.get("backpack") or {}).get("capacity", 8),

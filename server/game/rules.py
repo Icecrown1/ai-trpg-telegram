@@ -27,6 +27,23 @@ CLASSES = {
         "start_items": ["Кинжал", "Отмычки", "Верёвка"],
         "desc": "Ловушки, тени, чужие карманы.",
     },
+    "archer": {
+        "name": "Лучник", "hit_die": 8,
+        "start_items": ["Короткий лук", "Колчан стрел", "Охотничий нож"],
+        "desc": "Смерть с расстояния. Ловкость решает.",
+    },
+    "templar": {
+        "name": "Храмовник", "hit_die": 10,
+        "start_items": ["Двуручный меч", "Латный нагрудник", "Обет на пергаменте"],
+        "desc": "Сталь и вера в одном ударе. Медлителен, но неумолим.",
+        "spells": ["Кара света", "Стойкость"],
+    },
+    "druid": {
+        "name": "Друид", "hit_die": 8,
+        "start_items": ["Посох из живого дуба", "Мешочек трав", "Костяной амулет"],
+        "desc": "Говорит с тем, что растёт и рычит.",
+        "spells": ["Опутывание", "Лечение природой", "Звериный облик"],
+    },
 }
 
 RACES = {
@@ -39,6 +56,26 @@ RACES = {
 def mod(score: int) -> int:
     """Classic ability modifier."""
     return (score - 10) // 2
+
+
+def seeker_to_state(seeker, name_override=None) -> dict:
+    """Собрать боевое состояние из персистентного искателя."""
+    c = CLASSES[seeker.cls]
+    return {
+        "name": name_override or seeker.name,
+        "race": seeker.race, "class": seeker.cls,
+        "level": seeker.level, "xp": seeker.xp,
+        "stats": dict(seeker.stats),
+        "hp": seeker.max_hp, "max_hp": seeker.max_hp,
+        "gold": 30, "inventory": list(c["start_items"]),
+        "spells": list(c.get("spells", [])),
+        "location": "Врата подземелья Кар-Морд", "depth": 1, "flags": {},
+        "fate": 1,
+        "backpack": {"capacity": 8, "res": {}},
+        "scene": {"place": "Врата подземелья Кар-Морд",
+                  "exits": ["внутрь, за врата"], "objects": [], "beings": []},
+        "party": [],
+    }
 
 
 def new_character(name: str, race: str, cls: str) -> dict:

@@ -72,6 +72,21 @@ def apply_delta(state: dict, delta: dict) -> dict:
                 if bp["res"][rid] == 0:
                     del bp["res"][rid]
 
+    # партия соратников: урон/лечение по имени, гибель или уход — party_remove
+    party = state.setdefault("party", [])
+    if isinstance(delta.get("party_hp"), dict):
+        for name, dhp in delta["party_hp"].items():
+            for m in party:
+                if m.get("name") == name:
+                    try:
+                        m["hp"] = max(0, min(int(m.get("max_hp", 8)), int(m.get("hp", 0)) + int(dhp)))
+                    except (TypeError, ValueError):
+                        pass
+    if isinstance(delta.get("party_remove"), list):
+        gone = {str(x) for x in delta["party_remove"]}
+        state["party"] = [m for m in party if m.get("name") not in gone]
+    state["party"] = [m for m in state.get("party", []) if int(m.get("hp", 0)) > 0]
+
     if isinstance(delta.get("scene"), dict):
         sc = delta["scene"]
         clean = {}

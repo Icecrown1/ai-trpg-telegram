@@ -75,6 +75,15 @@ export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }
         >
           {showInv ? '▾' : '▸'} персонаж и снаряжение ({s.inventory.length})
         </button>
+        {(s.party || []).length > 0 && (
+          <div className="inv" style={{ marginTop: 4 }}>
+            {s.party.map((m) => (
+              <span key={m.name} className="inv-item">
+                ⚔ {m.name} · {m.cls_name || m.cls} · ❤{m.hp}/{m.max_hp}
+              </span>
+            ))}
+          </div>
+        )}
         {showInv && (
           <div className="inv">
             <div className="char-stats">

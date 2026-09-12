@@ -34,6 +34,9 @@ export const api = {
   turn: (runId, text) =>
     req(`/api/run/${runId}/turn`, { method: 'POST', body: JSON.stringify({ text }) }),
   abandon: (runId) => req(`/api/run/${runId}/abandon`, { method: 'POST' }),
+  city: () => req('/api/city'),
+  build: (building) => req('/api/city/build', { method: 'POST', body: JSON.stringify({ building }) }),
+  hire: (name) => req('/api/city/hire', { method: 'POST', body: JSON.stringify({ name }) }),
 }
 
 export function haptic(type = 'light') {

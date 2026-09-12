@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import User, Run, Turn, City
+from ..models import User, Run, Turn, City, Seeker
 from ..telegram_auth import get_tg_user
 from ..config import FREE_TURNS_PER_DAY, CONTEXT_RECENT_TURNS, SUMMARIZE_EVERY
 from ..game import rules, state as state_mod, master
@@ -61,23 +61,31 @@ def _check_turn_limit(db: Session, user: User):
     db.commit()
 
 
-DEFAULT_BUILDINGS = {"tavern": 1, "forge": 0, "mage_tower": 0, "throne": 0}
-
-
-def _get_or_create_city(db: Session, user: User) -> City:
-    city = db.query(City).filter(City.user_id == user.id).first()
-    if not city:
-        city = City(user_id=user.id, buildings=dict(DEFAULT_BUILDINGS), resources={}, gold=0)
-        db.add(city)
-        db.commit()
-        db.refresh(city)
-    return city
+from .city import get_or_create_city as _get_or_create_city, city_payload as _full_city_payload
+from ..game.buildings import seeker_slots
 
 
 def _city_payload(city: City) -> dict:
     from ..game.resources import res_brief
     return {"buildings": city.buildings, "gold": city.gold,
             "resources": city.resources, "resources_named": res_brief(city.resources)}
+
+
+def _finish_seeker(db: Session, run: Run, died: bool, final_state: dict):
+    """Синхронизировать персистентного искателя с исходом забега."""
+    if not run.seeker_id:
+        return
+    s = db.query(Seeker).filter(Seeker.id == run.seeker_id).first()
+    if not s:
+        return
+    if died:
+        s.status = "dead"
+    else:
+        s.status = "idle"
+        s.level = final_state.get("level", s.level)
+        s.xp = final_state.get("xp", s.xp)
+        s.max_hp = final_state.get("max_hp", s.max_hp)
+        s.runs_survived += 1
 
 
 def _active_run(db: Session, user: User) -> Run | None:
@@ -156,6 +164,15 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
             cres[rid] = cres.get(rid, 0) + int(cnt)
         city.resources = cres
         city.gold = (city.gold or 0) + int(new_state.get("gold", 0))
+        # выжившие соратники возвращаются в таверну с +1 преданности
+        back = []
+        for m in new_state.get("party", []):
+            m = dict(m)
+            m["loyalty"] = int(m.get("loyalty", 0)) + 1
+            m["hp"] = m.get("max_hp", m.get("hp", 8))
+            back.append(m)
+        city.companions = (list(city.companions or []) + back)
+        _finish_seeker(db, run, died=False, final_state=new_state)
 
     if game_over:
         run.status = "dead"
@@ -164,6 +181,8 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
         user.total_runs += 1
         user.deepest_level = max(user.deepest_level, new_state.get("depth", 1))
         user.best_gold = max(user.best_gold, new_state.get("gold", 0))
+        _finish_seeker(db, run, died=True, final_state=new_state)
+        # соратники, бывшие с искателем, сгинули вместе с ним
 
     db.commit()
 
@@ -199,9 +218,11 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
 # ---------- schemas ----------
 
 class NewRunIn(BaseModel):
-    name: str = Field(min_length=1, max_length=24)
-    race: str
-    cls: str = Field(alias="class")
+    # либо seeker_id существующего, либо параметры нового искателя
+    seeker_id: int | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=24)
+    race: str | None = None
+    cls: str | None = Field(default=None, alias="class")
 
     class Config:
         populate_by_name = True
@@ -261,12 +282,36 @@ def new_run(body: NewRunIn, tg=Depends(get_tg_user), db: Session = Depends(get_d
         raise HTTPException(409, "У тебя уже есть активный забег. Заверши его или погибни с честью.")
     _check_turn_limit(db, user)
 
-    try:
-        char = rules.new_character(body.name, body.race, body.cls)
-    except ValueError:
-        raise HTTPException(422, "Неизвестная раса или класс")
+    city = _get_or_create_city(db, user)
+    if body.seeker_id:
+        seeker = db.query(Seeker).filter(
+            Seeker.id == body.seeker_id, Seeker.user_id == user.id, Seeker.status == "idle"
+        ).first()
+        if not seeker:
+            raise HTTPException(404, "Искатель не найден или занят")
+        char = rules.seeker_to_state(seeker)
+    else:
+        if not (body.name and body.race and body.cls):
+            raise HTTPException(422, "Для нового искателя нужны имя, раса и класс")
+        living = db.query(Seeker).filter(
+            Seeker.user_id == user.id, Seeker.status != "dead"
+        ).count()
+        if living >= seeker_slots(city.buildings):
+            raise HTTPException(409, "Все слоты искателей заняты. Отправь живого или улучши Тронный зал.")
+        try:
+            char = rules.new_character(body.name, body.race, body.cls)
+        except ValueError:
+            raise HTTPException(422, "Неизвестная раса или класс")
+        seeker = Seeker(user_id=user.id, name=char["name"], race=char["race"], cls=char["class"],
+                        level=1, xp=0, stats=char["stats"], max_hp=char["max_hp"])
+        db.add(seeker)
+        db.flush()
+    seeker.status = "in_run"
+    # дружина из таверны идёт с искателем; город на время пустеет
+    char["party"] = [dict(c) for c in (city.companions or [])]
+    city.companions = []
 
-    run = Run(user_id=user.id, state=char)
+    run = Run(user_id=user.id, seeker_id=seeker.id, state=char)
     db.add(run)
     db.commit()
     db.refresh(run)
@@ -313,6 +358,11 @@ def make_turn(run_id: int, body: TurnIn, tg=Depends(get_tg_user), db: Session = 
     return _apply_gm_result(db, run, body.text.strip(), result)
 
 
+@router.get("/classes_meta")
+def classes_meta():
+    return {"classes": {k: {"name": v["name"], "desc": v["desc"]} for k, v in rules.CLASSES.items()}}
+
+
 @router.post("/run/{run_id}/abandon")
 def abandon(run_id: int, tg=Depends(get_tg_user), db: Session = Depends(get_db)):
     user = _get_or_create_user(db, tg)
@@ -321,5 +371,6 @@ def abandon(run_id: int, tg=Depends(get_tg_user), db: Session = Depends(get_db))
         raise HTTPException(404, "Активный забег не найден")
     run.status = "abandoned"
     user.total_runs += 1
+    _finish_seeker(db, run, died=True, final_state=run.state)  # бросить забег = бросить искателя тьме
     db.commit()
     return {"ok": True}
