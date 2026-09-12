@@ -1,3 +1,4 @@
+import copy
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -100,7 +101,9 @@ def _run_payload(run: Run, last: dict | None = None) -> dict:
 
 
 def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> dict:
-    new_state = state_mod.apply_delta(dict(run.state), result.get("state_delta") or {})
+    # deepcopy обязателен: изменение только вложенных структур (рюкзак/сцена/инвентарь)
+    # при shallow-копии не считалось изменением атрибута и не попадало в базу
+    new_state = state_mod.apply_delta(copy.deepcopy(run.state), result.get("state_delta") or {})
     extracted = bool(result.get("extracted")) and new_state["hp"] > 0
     game_over = (bool(result.get("game_over")) or new_state["hp"] <= 0) and not extracted
 
