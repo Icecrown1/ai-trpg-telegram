@@ -25,4 +25,5 @@ def defense(state: dict) -> int:
     """Защита игрока: 10 + мод ЛОВ + броня. Единственный источник истины."""
     dex = int((state.get("stats") or {}).get("DEX", 10))
     armor = ((state.get("equipment") or {}).get("armor") or {})
-    return 10 + (dex - 10) // 2 + int(armor.get("def", 0))
+    stoneskin = 2 if int((state.get("flags") or {}).get("stone_skin", 0) or 0) > 0 else 0
+    return 10 + (dex - 10) // 2 + int(armor.get("def", 0)) + stoneskin

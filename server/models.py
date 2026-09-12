@@ -22,6 +22,7 @@ class User(Base):
 
     # meta-progression between runs
     total_runs = Column(Integer, default=0)
+    run_stamps = Column(JSON, nullable=False, default=list)  # timestamps последних стартов забегов
     deepest_level = Column(Integer, default=0)
     best_gold = Column(Integer, default=0)
 

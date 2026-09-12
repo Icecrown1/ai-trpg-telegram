@@ -2,10 +2,11 @@ import { useState } from 'react'
 
 const B_ORDER = ['tavern', 'throne', 'forge', 'mage_tower']
 
-export default function CityScreen({ city, user, dungeons, busy, error, onSend, onNewSeeker, onBuild, onHire, onCraft }) {
+export default function CityScreen({ city, user, dungeons, busy, error, onSend, onNewSeeker, onBuild, onHire, onCraft, onEnchant, onDaily }) {
   const [tab, setTab] = useState('city')
   const [craftFor, setCraftFor] = useState(null)
   const [dungeon, setDungeon] = useState((dungeons && dungeons[0]?.id) || 'kar_mord')
+  const [enchantFor, setEnchantFor] = useState(null)
   const comps = city.companions || []
   const seekers = city.seekers || []
 
@@ -17,6 +18,7 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
           <span>КАЗНА <b>{city.gold}</b></span>
           <span>ИСКАТЕЛИ <b>{seekers.length}/{city.seeker_slots}</b></span>
           <span>ДРУЖИНА <b>{comps.length}/{city.companion_slots}</b></span>
+          <span>ПОПЫТКИ <b>{city.runs_left}/{city.runs_per_window}</b></span>
           <span className="muted">ходы: {user.turns_left}</span>
         </div>
       </div>
@@ -26,6 +28,9 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
         <button className={tab === 'tavern' ? 'primary' : ''} onClick={() => setTab('tavern')}>Таверна</button>
         {(city.buildings || {}).forge > 0 && (
           <button className={tab === 'forge' ? 'primary' : ''} onClick={() => setTab('forge')}>Кузница</button>
+        )}
+        {(city.buildings || {}).mage_tower > 0 && (
+          <button className={tab === 'tower' ? 'primary' : ''} onClick={() => setTab('tower')}>Башня</button>
         )}
         <button className={tab === 'store' ? 'primary' : ''} onClick={() => setTab('store')}>Склад</button>
       </div>
@@ -123,6 +128,36 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
         </div>
       )}
 
+      {tab === 'tower' && (
+        <div className="log" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p className="muted">Финеус, не отрываясь от колбы: «А, заказчик! Не трогайте ничего. Особенно вон то».</p>
+          {(city.enchantable || []).map((it) => (
+            <div className="panel" key={it.id}>
+              <span className="panel-title">{it.name}{!it.available && ` · башня ур.${it.tower}`}</span>
+              <p className="muted">{it.effect}</p>
+              <p className="muted">
+                Цена: {Object.entries(it.cost_named).map(([n, c]) => `${n} × ${c}`).join(', ')}
+                {it.gold > 0 && `, золото ${it.gold}`}
+              </p>
+              {it.available && enchantFor !== it.id && (
+                <button disabled={busy} onClick={() => setEnchantFor(it.id)}>▸ Заказать</button>
+              )}
+              {enchantFor === it.id && (
+                <div className="actions">
+                  {(city.seekers || []).filter((s) => s.status === 'idle').map((s) => (
+                    <button key={s.id} disabled={busy}
+                      onClick={() => { onEnchant(it.id, s.id); setEnchantFor(null) }}>
+                      для {s.name}
+                    </button>
+                  ))}
+                  <button onClick={() => setEnchantFor(null)}>отмена</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {tab === 'store' && (
         <div className="log">
           <div className="panel">
@@ -134,6 +169,20 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
             <span key={n} className="inv-item">{n} × {c}</span>
           ))}
           </div>
+        </div>
+      )}
+
+      {city.daily && (
+        <div className="panel">
+          <span className="panel-title">Поручение трона</span>
+          <p className="muted">
+            Принести: {city.daily.res_name} × {city.daily.count} · награда {city.daily.reward_gold} зол.
+          </p>
+          {city.daily.done
+            ? <p className="muted">Сдано. Корона довольна. Завтра будет новое.</p>
+            : <button disabled={busy || !city.daily.can_claim} onClick={onDaily}>
+                {city.daily.can_claim ? '▸ Сдать со склада' : 'На складе не хватает'}
+              </button>}
         </div>
       )}
 
@@ -149,6 +198,9 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
           ))}
         </div>
         <p className="muted">{(dungeons || []).find((d) => d.id === dungeon)?.desc}</p>
+        {city.runs_left === 0 && (
+          <p className="error">Попытки исчерпаны. Следующая через {city.next_run_in}.</p>
+        )}
         {seekers.filter((s) => s.status === 'idle').map((s) => (
           <button key={s.id} disabled={busy} style={{ marginRight: 8, marginBottom: 6 }}
             onClick={() => onSend(s.id, dungeon)}>

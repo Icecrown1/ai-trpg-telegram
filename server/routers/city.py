@@ -11,6 +11,7 @@ from ..models import User, City, Seeker
 from ..telegram_auth import get_tg_user
 from ..game.buildings import BUILDING_DEFS, seeker_slots, companion_slots
 from ..game.gear import GEAR
+from ..game.magic import MAGIC
 from ..game.resources import RESOURCES, res_brief
 from ..game import rules
 
@@ -85,6 +86,40 @@ def city_payload(db: Session, city: City, user: User) -> dict:
             "cost_named": res_brief(nxt.get("cost", {})),
             "desc": nxt.get("desc", ""),
         }
+    from datetime import datetime, timedelta, date
+    from ..config import RUNS_PER_WINDOW, RUN_WINDOW_HOURS
+    window_h = max(2, RUN_WINDOW_HOURS - int((city.buildings or {}).get("throne", 0)))
+    now = datetime.utcnow()
+    stamps = [s for s in (user.run_stamps or [])
+              if now - datetime.fromisoformat(s) < timedelta(hours=window_h)]
+    runs_left = max(0, RUNS_PER_WINDOW - len(stamps))
+    next_in = None
+    if runs_left == 0 and stamps:
+        oldest = min(datetime.fromisoformat(s) for s in stamps)
+        wait = oldest + timedelta(hours=window_h) - now
+        next_in = f"{int(wait.total_seconds() // 3600)}ч {int(wait.total_seconds() % 3600 // 60):02d}м"
+
+    daily = None
+    throne_lvl = (city.buildings or {}).get("throne", 0)
+    if throne_lvl >= 1:
+        pool = [("stone", 4), ("wood", 4), ("leather", 3), ("iron", 2), ("bone", 2), ("cloth", 3)]
+        today = date.today()
+        rid_, cnt_ = pool[(today.toordinal() + city.id) % len(pool)]
+        daily = {
+            "res": rid_, "res_name": RESOURCES[rid_]["name"], "count": cnt_,
+            "reward_gold": 30 + 20 * throne_lvl,
+            "done": (city.flags or {}).get("daily_done") == today.isoformat(),
+            "can_claim": (city.resources or {}).get(rid_, 0) >= cnt_,
+        }
+
+    tower_lvl = (city.buildings or {}).get("mage_tower", 0)
+    enchantable = [
+        {"id": mid, "name": m["name"], "tower": m["tower"], "effect": m["effect"],
+         "cost": m["cost"], "cost_named": res_brief(m["cost"]), "gold": m["gold"],
+         "available": tower_lvl >= m["tower"]}
+        for mid, m in MAGIC.items()
+    ] if tower_lvl > 0 else []
+
     forge_lvl = (city.buildings or {}).get("forge", 0)
     craftable = [
         {"id": gid, "name": g["name"], "slot": g["slot"], "forge": g["forge"],
@@ -95,6 +130,10 @@ def city_payload(db: Session, city: City, user: User) -> dict:
         for gid, g in GEAR.items()
     ] if forge_lvl > 0 else []
     return {
+        "runs_left": runs_left, "runs_per_window": RUNS_PER_WINDOW,
+        "run_window_hours": window_h, "next_run_in": next_in,
+        "daily": daily,
+        "enchantable": enchantable,
         "craftable": craftable,
         "buildings": city.buildings,
         "building_names": {k: v["name"] for k, v in BUILDING_DEFS.items()},
@@ -209,6 +248,40 @@ def craft(body: CraftIn, tg=Depends(get_tg_user), db: Session = Depends(get_db))
     if not user:
         raise HTTPException(404, "Сначала зайди в игру")
     city = get_or_create_city(db, user)
+    from datetime import datetime, timedelta, date
+    from ..config import RUNS_PER_WINDOW, RUN_WINDOW_HOURS
+    window_h = max(2, RUN_WINDOW_HOURS - int((city.buildings or {}).get("throne", 0)))
+    now = datetime.utcnow()
+    stamps = [s for s in (user.run_stamps or [])
+              if now - datetime.fromisoformat(s) < timedelta(hours=window_h)]
+    runs_left = max(0, RUNS_PER_WINDOW - len(stamps))
+    next_in = None
+    if runs_left == 0 and stamps:
+        oldest = min(datetime.fromisoformat(s) for s in stamps)
+        wait = oldest + timedelta(hours=window_h) - now
+        next_in = f"{int(wait.total_seconds() // 3600)}ч {int(wait.total_seconds() % 3600 // 60):02d}м"
+
+    daily = None
+    throne_lvl = (city.buildings or {}).get("throne", 0)
+    if throne_lvl >= 1:
+        pool = [("stone", 4), ("wood", 4), ("leather", 3), ("iron", 2), ("bone", 2), ("cloth", 3)]
+        today = date.today()
+        rid_, cnt_ = pool[(today.toordinal() + city.id) % len(pool)]
+        daily = {
+            "res": rid_, "res_name": RESOURCES[rid_]["name"], "count": cnt_,
+            "reward_gold": 30 + 20 * throne_lvl,
+            "done": (city.flags or {}).get("daily_done") == today.isoformat(),
+            "can_claim": (city.resources or {}).get(rid_, 0) >= cnt_,
+        }
+
+    tower_lvl = (city.buildings or {}).get("mage_tower", 0)
+    enchantable = [
+        {"id": mid, "name": m["name"], "tower": m["tower"], "effect": m["effect"],
+         "cost": m["cost"], "cost_named": res_brief(m["cost"]), "gold": m["gold"],
+         "available": tower_lvl >= m["tower"]}
+        for mid, m in MAGIC.items()
+    ] if tower_lvl > 0 else []
+
     forge_lvl = (city.buildings or {}).get("forge", 0)
     g = GEAR.get(body.item_id)
     if not g:
@@ -237,5 +310,70 @@ def craft(body: CraftIn, tg=Depends(get_tg_user), db: Session = Depends(get_db))
         if g.get(k) is not None:
             item[k] = g[k]
     seeker.equipment = {**(seeker.equipment or {}), g["slot"]: item}
+    db.commit()
+    return city_payload(db, city, user)
+
+
+class EnchantIn(BaseModel):
+    item_id: str
+    seeker_id: int
+
+
+@router.post("/enchant")
+def enchant(body: EnchantIn, tg=Depends(get_tg_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.tg_id == tg["id"]).first()
+    if not user:
+        raise HTTPException(404, "Сначала зайди в игру")
+    city = get_or_create_city(db, user)
+    tower_lvl = (city.buildings or {}).get("mage_tower", 0)
+    m = MAGIC.get(body.item_id)
+    if not m:
+        raise HTTPException(422, "Финеус поднимает бровь: «Такого я не делаю»")
+    if tower_lvl < m["tower"]:
+        raise HTTPException(409, f"Нужна башня уровня {m['tower']}")
+    seeker = db.query(Seeker).filter(
+        Seeker.id == body.seeker_id, Seeker.user_id == user.id, Seeker.status == "idle"
+    ).first()
+    if not seeker:
+        raise HTTPException(404, "Искатель не найден или в подземелье")
+    cres = dict(city.resources or {})
+    for rid, cnt in m["cost"].items():
+        if cres.get(rid, 0) < cnt:
+            raise HTTPException(409, f"Не хватает: {RESOURCES[rid]['name']} ({cres.get(rid, 0)}/{cnt})")
+    if (city.gold or 0) < m["gold"]:
+        raise HTTPException(409, f"Не хватает золота ({city.gold or 0}/{m['gold']})")
+    for rid, cnt in m["cost"].items():
+        cres[rid] -= cnt
+        if cres[rid] <= 0:
+            del cres[rid]
+    city.resources = cres
+    city.gold = (city.gold or 0) - m["gold"]
+    seeker.inventory = list(seeker.inventory or []) + [m["name"]]
+    db.commit()
+    return city_payload(db, city, user)
+
+
+@router.post("/daily_claim")
+def daily_claim(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
+    from datetime import date
+    user = db.query(User).filter(User.tg_id == tg["id"]).first()
+    if not user:
+        raise HTTPException(404, "Сначала зайди в игру")
+    city = get_or_create_city(db, user)
+    payload = city_payload(db, city, user)
+    daily = payload.get("daily")
+    if not daily:
+        raise HTTPException(409, "Тронный зал ещё не даёт поручений")
+    if daily["done"]:
+        raise HTTPException(409, "Сегодняшнее поручение уже сдано")
+    if not daily["can_claim"]:
+        raise HTTPException(409, f"На складе мало: {daily['res_name']} нужно {daily['count']}")
+    cres = dict(city.resources or {})
+    cres[daily["res"]] -= daily["count"]
+    if cres[daily["res"]] <= 0:
+        del cres[daily["res"]]
+    city.resources = cres
+    city.gold = (city.gold or 0) + daily["reward_gold"]
+    city.flags = {**(city.flags or {}), "daily_done": date.today().isoformat()}
     db.commit()
     return city_payload(db, city, user)

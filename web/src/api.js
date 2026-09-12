@@ -38,6 +38,8 @@ export const api = {
   build: (building) => req('/api/city/build', { method: 'POST', body: JSON.stringify({ building }) }),
   hire: (name) => req('/api/city/hire', { method: 'POST', body: JSON.stringify({ name }) }),
   craft: (item_id, seeker_id) => req('/api/city/craft', { method: 'POST', body: JSON.stringify({ item_id, seeker_id }) }),
+  enchant: (item_id, seeker_id) => req('/api/city/enchant', { method: 'POST', body: JSON.stringify({ item_id, seeker_id }) }),
+  dailyClaim: () => req('/api/city/daily_claim', { method: 'POST' }),
 }
 
 export function haptic(type = 'light') {

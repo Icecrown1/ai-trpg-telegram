@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import User, Run, Turn, City, Seeker
 from ..telegram_auth import get_tg_user
-from ..config import FREE_TURNS_PER_DAY, CONTEXT_RECENT_TURNS, SUMMARIZE_EVERY
+from ..config import (FREE_TURNS_PER_DAY, CONTEXT_RECENT_TURNS, SUMMARIZE_EVERY,
+                      RUNS_PER_WINDOW, RUN_WINDOW_HOURS)
 from ..game import rules, state as state_mod, master
 from ..game.dungeons import DUNGEONS, get_dungeon, DEFAULT_DUNGEON
 
@@ -127,6 +128,21 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
         result["narration"] = (result.get("narration", "").rstrip() +
             "\n\nТьма уже тянет к тебе пальцы — но судьба вцепляется в ворот и выдёргивает "
             "обратно. Ты жив. Едва. Второго чуда не будет.")
+
+    # Свиток последнего вздоха: серверная гарантия, срабатывает после судьбы
+    from ..game.magic import LASTBREATH_NAME
+    if game_over and LASTBREATH_NAME in (new_state.get("inventory") or []):
+        new_state["inventory"] = [i for i in new_state["inventory"] if i != LASTBREATH_NAME]
+        new_state["hp"] = 1
+        game_over = False
+        result["narration"] = (result.get("narration", "").rstrip() +
+            "\n\nСвиток на поясе вспыхивает сам собой. Мир возвращается со вкусом пепла во рту: "
+            "работа Финеуса выдернула тебя за миг до конца. Пергамент осыпался золой.")
+
+    # Каменная кожа тикает: минус ход каждый ход
+    ss = int((new_state.get("flags") or {}).get("stone_skin", 0) or 0)
+    if ss > 0:
+        new_state["flags"]["stone_skin"] = ss - 1
 
     _ART_TAGS = {"gates","stairs","skull","goblin","rat","undead","cultist","merchant",
                  "chest","altar","potion","well","torch","boss"}
@@ -300,6 +316,18 @@ def new_run(body: NewRunIn, tg=Depends(get_tg_user), db: Session = Depends(get_d
     _check_turn_limit(db, user)
 
     city = _get_or_create_city(db, user)
+    # кулдаун попыток: RUNS_PER_WINDOW за окно; трон сокращает окно на час за уровень (мин. 2ч)
+    from datetime import datetime, timedelta
+    window_h = max(2, RUN_WINDOW_HOURS - int((city.buildings or {}).get("throne", 0)))
+    now = datetime.utcnow()
+    stamps = [s for s in (user.run_stamps or [])
+              if now - datetime.fromisoformat(s) < timedelta(hours=window_h)]
+    if len(stamps) >= RUNS_PER_WINDOW:
+        oldest = min(datetime.fromisoformat(s) for s in stamps)
+        wait = oldest + timedelta(hours=window_h) - now
+        h, m = int(wait.total_seconds() // 3600), int(wait.total_seconds() % 3600 // 60)
+        raise HTTPException(429, f"Подземелья закрыты: попытки исчерпаны. Следующая через {h}ч {m:02d}м.")
+    user.run_stamps = stamps + [now.isoformat()]
     if body.dungeon not in DUNGEONS:
         raise HTTPException(422, "Неизвестное подземелье")
     dungeon = get_dungeon(body.dungeon)

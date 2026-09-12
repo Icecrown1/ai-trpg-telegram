@@ -21,6 +21,7 @@ _MIGRATIONS = (
     "ALTER TABLE seekers ADD COLUMN equipment JSON",
     "ALTER TABLE runs ADD COLUMN dungeon VARCHAR(32)",
     "ALTER TABLE seekers ADD COLUMN inventory JSON",
+    "ALTER TABLE users ADD COLUMN run_stamps JSON",
 )
 for _ddl in _MIGRATIONS:
     try:

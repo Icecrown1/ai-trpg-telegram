@@ -21,6 +21,10 @@ if DATABASE_URL.startswith("postgres://"):
     # SQLAlchemy needs the +psycopg2/postgresql scheme
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# --- Попытки забегов: N за окно часов; трон сокращает окно ---
+RUNS_PER_WINDOW = int(os.getenv("RUNS_PER_WINDOW", "2"))
+RUN_WINDOW_HOURS = int(os.getenv("RUN_WINDOW_HOURS", "6"))
+
 # --- Game limits / economics ---
 FREE_TURNS_PER_DAY = int(os.getenv("FREE_TURNS_PER_DAY", "30"))
 CONTEXT_RECENT_TURNS = int(os.getenv("CONTEXT_RECENT_TURNS", "10"))
