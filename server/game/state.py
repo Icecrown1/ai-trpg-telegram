@@ -72,6 +72,16 @@ def apply_delta(state: dict, delta: dict) -> dict:
                 if bp["res"][rid] == 0:
                     del bp["res"][rid]
 
+    # износ снаряжения: equipment_damage: "armor" | "weapon"
+    slot = delta.get("equipment_damage")
+    if slot in ("armor", "weapon"):
+        eq = state.setdefault("equipment", {})
+        item = eq.get(slot)
+        if item:
+            item["dur"] = int(item.get("dur", 1)) - 1
+            if item["dur"] <= 0:
+                eq[slot] = None  # сломано безвозвратно
+
     # партия соратников: урон/лечение по имени, гибель или уход — party_remove
     party = state.setdefault("party", [])
     if isinstance(delta.get("party_hp"), dict):

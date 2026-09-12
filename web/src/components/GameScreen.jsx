@@ -86,6 +86,12 @@ export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }
         )}
         {showInv && (
           <div className="inv">
+            {(s.equipment?.weapon || s.equipment?.armor) && (
+              <div style={{ marginBottom: 6 }}>
+                {s.equipment.weapon && <span className="inv-item spell">⚔ {s.equipment.weapon.name} (+{s.equipment.weapon.atk}, {s.equipment.weapon.dmg})</span>}
+                {s.equipment.armor && <span className="inv-item spell">🛡 {s.equipment.armor.name} (защита +{s.equipment.armor.def}, прочн. {s.equipment.armor.dur})</span>}
+              </div>
+            )}
             <div className="char-stats">
               {Object.entries(s.stats || {}).map(([k, v]) => (
                 <span key={k}>{STAT_RU[k] || k} <b>{v}</b> <i>({mod(v)})</i></span>

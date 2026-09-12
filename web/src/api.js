@@ -37,6 +37,7 @@ export const api = {
   city: () => req('/api/city'),
   build: (building) => req('/api/city/build', { method: 'POST', body: JSON.stringify({ building }) }),
   hire: (name) => req('/api/city/hire', { method: 'POST', body: JSON.stringify({ name }) }),
+  craft: (item_id, seeker_id) => req('/api/city/craft', { method: 'POST', body: JSON.stringify({ item_id, seeker_id }) }),
 }
 
 export function haptic(type = 'light') {

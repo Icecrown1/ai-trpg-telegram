@@ -61,6 +61,8 @@ def mod(score: int) -> int:
 def seeker_to_state(seeker, name_override=None) -> dict:
     """Собрать боевое состояние из персистентного искателя."""
     c = CLASSES[seeker.cls]
+    eq = dict(seeker.equipment or {})
+    pack_bonus = int((eq.get("pack") or {}).get("capacity", 0))
     return {
         "name": name_override or seeker.name,
         "race": seeker.race, "class": seeker.cls,
@@ -71,7 +73,8 @@ def seeker_to_state(seeker, name_override=None) -> dict:
         "spells": list(c.get("spells", [])),
         "location": "Врата подземелья Кар-Морд", "depth": 1, "flags": {},
         "fate": 1,
-        "backpack": {"capacity": 8, "res": {}},
+        "backpack": {"capacity": 8 + pack_bonus, "res": {}},
+        "equipment": eq,
         "scene": {"place": "Врата подземелья Кар-Морд",
                   "exits": ["внутрь, за врата"], "objects": [], "beings": []},
         "party": [],
@@ -98,6 +101,7 @@ def new_character(name: str, race: str, cls: str) -> dict:
         "gold": 30,
         "fate": 1,  # очко судьбы: один раз спасает от смерти за забег
         "backpack": {"capacity": BACKPACK_CAPACITY_DEFAULT, "res": {}},
+        "equipment": {},
         "inventory": list(c["start_items"]),
         "spells": list(c.get("spells", [])),
         "location": "Врата подземелья Кар-Морд",

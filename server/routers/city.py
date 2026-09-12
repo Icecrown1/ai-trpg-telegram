@@ -10,6 +10,7 @@ from ..db import get_db
 from ..models import User, City, Seeker
 from ..telegram_auth import get_tg_user
 from ..game.buildings import BUILDING_DEFS, seeker_slots, companion_slots
+from ..game.gear import GEAR
 from ..game.resources import RESOURCES, res_brief
 from ..game import rules
 
@@ -84,7 +85,17 @@ def city_payload(db: Session, city: City, user: User) -> dict:
             "cost_named": res_brief(nxt.get("cost", {})),
             "desc": nxt.get("desc", ""),
         }
+    forge_lvl = (city.buildings or {}).get("forge", 0)
+    craftable = [
+        {"id": gid, "name": g["name"], "slot": g["slot"], "forge": g["forge"],
+         "cost": g["cost"], "cost_named": res_brief(g["cost"]), "gold": g["gold"],
+         "def": g.get("def"), "atk": g.get("atk"), "dmg": g.get("dmg"),
+         "capacity": g.get("capacity"), "dur": g.get("dur"),
+         "available": forge_lvl >= g["forge"]}
+        for gid, g in GEAR.items()
+    ] if forge_lvl > 0 else []
     return {
+        "craftable": craftable,
         "buildings": city.buildings,
         "building_names": {k: v["name"] for k, v in BUILDING_DEFS.items()},
         "upgrades": upgrades,
@@ -96,7 +107,8 @@ def city_payload(db: Session, city: City, user: User) -> dict:
         "seekers": [
             {"id": s.id, "name": s.name, "race": s.race, "cls": s.cls,
              "cls_name": rules.CLASSES[s.cls]["name"], "level": s.level,
-             "max_hp": s.max_hp, "runs_survived": s.runs_survived, "status": s.status}
+             "max_hp": s.max_hp, "runs_survived": s.runs_survived, "status": s.status,
+             "equipment": s.equipment or {}}
             for s in seekers
         ],
         "seeker_slots": seeker_slots(city.buildings),
@@ -184,3 +196,46 @@ def hire(body: HireIn, tg=Depends(get_tg_user), db: Session = Depends(get_db)):
     payload = city_payload(db, city, user)
     payload["tavern_patrons"] = tavern_patrons(city, user)
     return payload
+
+
+class CraftIn(BaseModel):
+    item_id: str
+    seeker_id: int
+
+
+@router.post("/craft")
+def craft(body: CraftIn, tg=Depends(get_tg_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.tg_id == tg["id"]).first()
+    if not user:
+        raise HTTPException(404, "Сначала зайди в игру")
+    city = get_or_create_city(db, user)
+    forge_lvl = (city.buildings or {}).get("forge", 0)
+    g = GEAR.get(body.item_id)
+    if not g:
+        raise HTTPException(422, "Торин такого не куёт")
+    if forge_lvl < g["forge"]:
+        raise HTTPException(409, f"Нужна кузница уровня {g['forge']}")
+    seeker = db.query(Seeker).filter(
+        Seeker.id == body.seeker_id, Seeker.user_id == user.id, Seeker.status == "idle"
+    ).first()
+    if not seeker:
+        raise HTTPException(404, "Искатель не найден или в подземелье")
+    cres = dict(city.resources or {})
+    for rid, cnt in g["cost"].items():
+        if cres.get(rid, 0) < cnt:
+            raise HTTPException(409, f"Не хватает: {RESOURCES[rid]['name']} ({cres.get(rid, 0)}/{cnt})")
+    if (city.gold or 0) < g["gold"]:
+        raise HTTPException(409, f"Не хватает золота ({city.gold or 0}/{g['gold']})")
+    for rid, cnt in g["cost"].items():
+        cres[rid] -= cnt
+        if cres[rid] <= 0:
+            del cres[rid]
+    city.resources = cres
+    city.gold = (city.gold or 0) - g["gold"]
+    item = {"id": body.item_id, "name": g["name"]}
+    for k in ("def", "atk", "dmg", "dur", "capacity"):
+        if g.get(k) is not None:
+            item[k] = g[k]
+    seeker.equipment = {**(seeker.equipment or {}), g["slot"]: item}
+    db.commit()
+    return city_payload(db, city, user)

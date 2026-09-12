@@ -18,6 +18,7 @@ _MIGRATIONS = (
     "ALTER TABLE runs ADD COLUMN seeker_id INTEGER",
     "ALTER TABLE cities ADD COLUMN companions JSON",
     "ALTER TABLE cities ADD COLUMN flags JSON",
+    "ALTER TABLE seekers ADD COLUMN equipment JSON",
 )
 for _ddl in _MIGRATIONS:
     try:

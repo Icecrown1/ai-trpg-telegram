@@ -62,6 +62,7 @@ class Seeker(Base):
     max_hp = Column(Integer, default=8)
     runs_survived = Column(Integer, default=0)
     status = Column(String(12), default="idle")  # idle | in_run | dead
+    equipment = Column(JSON, nullable=False, default=dict)  # {"weapon": {...}, "armor": {...}, "pack": {...}}
 
 
 class Run(Base):

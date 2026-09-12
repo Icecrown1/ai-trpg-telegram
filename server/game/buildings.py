@@ -19,7 +19,12 @@ BUILDING_DEFS = {
         },
     },
     "forge": {"name": "Кузница", "locked_by": "dwarf_saved",
-              "locked_text": "Нужно спасти дварфа-кузнеца в глубинах Кар-Морда", "levels": {}},
+              "locked_text": "Нужно спасти дварфа-кузнеца в глубинах Кар-Морда",
+              "levels": {
+                  1: {"cost": {"wood": 6, "stone": 6}, "gold": 50, "desc": "Торин у горна: простой крафт"},
+                  2: {"cost": {"iron": 8, "wood_hard": 4}, "gold": 150, "desc": "Калёная сталь и кольчуги"},
+                  3: {"cost": {"mithril": 4, "iron": 6}, "gold": 500, "desc": "Мифрил поёт под молотом"},
+              }},
     "mage_tower": {"name": "Башня мага", "locked_by": "mage_saved",
                    "locked_text": "Нужно найти и спасти мага в подземельях", "levels": {}},
 }

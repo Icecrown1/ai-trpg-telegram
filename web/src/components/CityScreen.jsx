@@ -2,8 +2,9 @@ import { useState } from 'react'
 
 const B_ORDER = ['tavern', 'throne', 'forge', 'mage_tower']
 
-export default function CityScreen({ city, user, busy, error, onSend, onNewSeeker, onBuild, onHire }) {
+export default function CityScreen({ city, user, busy, error, onSend, onNewSeeker, onBuild, onHire, onCraft }) {
   const [tab, setTab] = useState('city')
+  const [craftFor, setCraftFor] = useState(null)
   const comps = city.companions || []
   const seekers = city.seekers || []
 
@@ -22,6 +23,9 @@ export default function CityScreen({ city, user, busy, error, onSend, onNewSeeke
       <div className="actions">
         <button className={tab === 'city' ? 'primary' : ''} onClick={() => setTab('city')}>Здания</button>
         <button className={tab === 'tavern' ? 'primary' : ''} onClick={() => setTab('tavern')}>Таверна</button>
+        {(city.buildings || {}).forge > 0 && (
+          <button className={tab === 'forge' ? 'primary' : ''} onClick={() => setTab('forge')}>Кузница</button>
+        )}
         <button className={tab === 'store' ? 'primary' : ''} onClick={() => setTab('store')}>Склад</button>
       </div>
 
@@ -84,6 +88,40 @@ export default function CityScreen({ city, user, busy, error, onSend, onNewSeeke
         </div>
       )}
 
+      {tab === 'forge' && (
+        <div className="log" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p className="muted">Торин Углебород оглядывает тебя поверх горна: «Ну, кому куём?»</p>
+          {(city.craftable || []).map((it) => (
+            <div className="panel" key={it.id}>
+              <span className="panel-title">{it.name}{!it.available && ` · кузница ур.${it.forge}`}</span>
+              <p className="muted">
+                {it.def != null && `Защита +${it.def} · прочность ${it.dur}`}
+                {it.atk != null && `Атака +${it.atk} · урон ${it.dmg}`}
+                {it.capacity != null && `Рюкзак +${it.capacity} слота`}
+              </p>
+              <p className="muted">
+                Цена: {Object.entries(it.cost_named).map(([n, c]) => `${n} × ${c}`).join(', ')}
+                {it.gold > 0 && `, золото ${it.gold}`}
+              </p>
+              {it.available && craftFor !== it.id && (
+                <button disabled={busy} onClick={() => setCraftFor(it.id)}>▸ Ковать</button>
+              )}
+              {craftFor === it.id && (
+                <div className="actions">
+                  {(city.seekers || []).filter((s) => s.status === 'idle').map((s) => (
+                    <button key={s.id} disabled={busy}
+                      onClick={() => { onCraft(it.id, s.id); setCraftFor(null) }}>
+                      для {s.name}
+                    </button>
+                  ))}
+                  <button onClick={() => setCraftFor(null)}>отмена</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {tab === 'store' && (
         <div className="panel log">
           <span className="panel-title">Склад города</span>
@@ -102,6 +140,8 @@ export default function CityScreen({ city, user, busy, error, onSend, onNewSeeke
           <button key={s.id} disabled={busy} style={{ marginRight: 8, marginBottom: 6 }}
             onClick={() => onSend(s.id)}>
             ▸ {s.name} · {s.cls_name} ур.{s.level} · выжил {s.runs_survived}
+            {s.equipment?.weapon && ` · ⚔${s.equipment.weapon.name}`}
+            {s.equipment?.armor && ` · 🛡${s.equipment.armor.name}`}
           </button>
         ))}
         {seekers.length < city.seeker_slots && (

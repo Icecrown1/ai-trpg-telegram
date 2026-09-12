@@ -65,6 +65,13 @@ export default function App() {
     finally { setBusy(false) }
   }
 
+  const handleCraft = async (itemId, seekerId) => {
+    setBusy(true); setError('')
+    try { setCity(await api.craft(itemId, seekerId)) }
+    catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }
+
   const handleHire = async (name) => {
     setBusy(true); setError('')
     try { setCity(await api.hire(name)) }
@@ -130,7 +137,7 @@ export default function App() {
     screen = city ? (
       <CityScreen city={city} user={user} busy={busy} error={error}
         onSend={handleSendSeeker} onNewSeeker={() => { setCreating(true); setError('') }}
-        onBuild={handleBuild} onHire={handleHire} />
+        onBuild={handleBuild} onHire={handleHire} onCraft={handleCraft} />
     ) : (
       <CharacterCreate meta={meta} user={user} busy={busy} error={error} onCreate={handleCreate} />
     )

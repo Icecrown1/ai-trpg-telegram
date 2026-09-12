@@ -86,6 +86,7 @@ def _finish_seeker(db: Session, run: Run, died: bool, final_state: dict):
         s.xp = final_state.get("xp", s.xp)
         s.max_hp = final_state.get("max_hp", s.max_hp)
         s.runs_survived += 1
+        s.equipment = final_state.get("equipment", s.equipment) or {}  # износ/поломки сохраняются
 
 
 def _active_run(db: Session, user: User) -> Run | None:
@@ -172,6 +173,14 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
             m["hp"] = m.get("max_hp", m.get("hp", 8))
             back.append(m)
         city.companions = (list(city.companions or []) + back)
+        # сюжетные флаги, пережившие подземелье
+        cflags = dict(city.flags or {})
+        for f in ("dwarf_saved", "mage_saved"):
+            if (new_state.get("flags") or {}).get(f):
+                cflags[f] = True
+        if user.total_runs >= 2:
+            cflags.setdefault("barman_dead", True)  # старик не дождался третьей ходки
+        city.flags = cflags
         _finish_seeker(db, run, died=False, final_state=new_state)
 
     if game_over:

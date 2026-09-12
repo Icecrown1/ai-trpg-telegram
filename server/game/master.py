@@ -12,6 +12,7 @@ from ..config import (ANTHROPIC_API_KEY, OPENAI_API_KEY, GM_PROVIDER,
 from ..dice import roll
 from .prompts import SYSTEM_PROMPT, WORLD_BIBLE, SUMMARY_PROMPT
 from .resources import res_brief, backpack_load
+from .gear import defense
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -56,6 +57,11 @@ ROLL_DICE_TOOL = {
         "properties": {
             "sides": {"type": "integer", "description": "Граней у кубика (например 20, 6)"},
             "count": {"type": "integer", "description": "Сколько кубиков, по умолчанию 1"},
+            "kind": {
+                "type": "string", "enum": ["check", "player_attack", "enemy_attack", "damage"],
+                "description": "Тип броска: player_attack (атака игрока, сервер добавит бонус оружия), "
+                               "enemy_attack (по игроку, сервер подставит СЛ=защите), damage (урон), check.",
+            },
             "stat": {
                 "type": "string", "enum": ["STR", "DEX", "CON", "INT", "WIS", "CHA"],
                 "description": "Какая характеристика персонажа проверяется. Сервер САМ добавит "
@@ -97,7 +103,21 @@ def _exec_roll(args: dict, state: dict) -> dict:
         score = int((state.get("stats") or {}).get(stat, 10))
         stat_mod = (score - 10) // 2
         reason = f"{reason} ({_STAT_RU[stat]})" if reason else f"Проверка {_STAT_RU[stat]}"
-    return roll(sides=sides, count=count, modifier=stat_mod + situational, reason=reason, dc=dc)
+
+    kind = args.get("kind") or "check"
+    weapon_mod = 0
+    if kind == "enemy_attack":
+        dc = defense(state)  # СЛ атак по игроку диктует сервер: броня работает всегда
+    elif kind == "player_attack":
+        weapon = (state.get("equipment") or {}).get("weapon") or {}
+        weapon_mod = int(weapon.get("atk", 0))
+        if weapon_mod:
+            reason = f"{reason} [{weapon.get('name', 'оружие')} +{weapon_mod}]"
+    elif kind == "damage":
+        dc = None
+
+    return roll(sides=sides, count=count, modifier=stat_mod + situational + weapon_mod,
+                reason=reason, dc=dc)
 
 
 _SYSTEM_BLOCKS = [
@@ -121,6 +141,11 @@ def _state_brief(state: dict) -> str:
                  "hp": f'{m.get("hp")}/{m.get("max_hp")}', "преданность": m.get("loyalty", 0)}
                 for m in state.get("party", [])
             ],
+            "защита": defense(state),
+            "оружие": ((state.get("equipment") or {}).get("weapon") or {}).get("name")
+                      and {**(state.get("equipment") or {}).get("weapon", {})} or None,
+            "броня": ((state.get("equipment") or {}).get("armor") or {}).get("name")
+                     and {**(state.get("equipment") or {}).get("armor", {})} or None,
             "рюкзак": {
                 "занято": backpack_load((state.get("backpack") or {}).get("res")),
                 "вместимость": (state.get("backpack") or {}).get("capacity", 8),
