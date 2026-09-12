@@ -123,7 +123,8 @@ export default function CityScreen({ city, user, busy, error, onSend, onNewSeeke
       )}
 
       {tab === 'store' && (
-        <div className="panel log">
+        <div className="log">
+          <div className="panel">
           <span className="panel-title">Склад города</span>
           {Object.keys(city.resources_named || {}).length === 0 && (
             <p className="muted">Пусто. Ресурсы приносят выжившие.</p>
@@ -131,6 +132,7 @@ export default function CityScreen({ city, user, busy, error, onSend, onNewSeeke
           {Object.entries(city.resources_named || {}).map(([n, c]) => (
             <span key={n} className="inv-item">{n} × {c}</span>
           ))}
+          </div>
         </div>
       )}
 
