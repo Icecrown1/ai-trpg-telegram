@@ -10,13 +10,23 @@ from .routers import game, stats, city
 
 Base.metadata.create_all(bind=engine)
 
-# мини-миграция для уже существующих баз (sqlite/postgres): добавить turns.scene_art
-try:
-    from sqlalchemy import text
-    with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE turns ADD COLUMN scene_art VARCHAR(32)"))
-except Exception:
-    pass  # колонка уже есть
+# --- мини-миграции для баз, созданных прошлыми версиями (sqlite и postgres) ---
+from sqlalchemy import text as _text
+
+_MIGRATIONS = (
+    "ALTER TABLE turns ADD COLUMN scene_art VARCHAR(32)",
+    "ALTER TABLE runs ADD COLUMN seeker_id INTEGER",
+    "ALTER TABLE cities ADD COLUMN companions JSON",
+    "ALTER TABLE cities ADD COLUMN flags JSON",
+)
+for _ddl in _MIGRATIONS:
+    try:
+        with engine.begin() as _conn:
+            _conn.execute(_text(_ddl))
+        print(f"[MIGRATION] applied: {_ddl}")
+    except Exception:
+        pass  # колонка уже есть — норма
+
 
 app = FastAPI(title="AI-TRPG Telegram Mini App")
 
