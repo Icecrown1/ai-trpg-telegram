@@ -2,9 +2,10 @@ import { useState } from 'react'
 
 const B_ORDER = ['tavern', 'throne', 'forge', 'mage_tower']
 
-export default function CityScreen({ city, user, busy, error, onSend, onNewSeeker, onBuild, onHire, onCraft }) {
+export default function CityScreen({ city, user, dungeons, busy, error, onSend, onNewSeeker, onBuild, onHire, onCraft }) {
   const [tab, setTab] = useState('city')
   const [craftFor, setCraftFor] = useState(null)
+  const [dungeon, setDungeon] = useState((dungeons && dungeons[0]?.id) || 'kar_mord')
   const comps = city.companions || []
   const seekers = city.seekers || []
 
@@ -138,16 +139,26 @@ export default function CityScreen({ city, user, busy, error, onSend, onNewSeeke
 
       <div className="panel">
         <span className="panel-title">В подземелье</span>
+        <div className="actions" style={{ marginBottom: 8 }}>
+          {(dungeons || []).map((d) => (
+            <button key={d.id} className={dungeon === d.id ? 'primary' : ''}
+              title={`${d.desc} · ${d.danger}`}
+              onClick={() => setDungeon(d.id)}>
+              {d.name}
+            </button>
+          ))}
+        </div>
+        <p className="muted">{(dungeons || []).find((d) => d.id === dungeon)?.desc}</p>
         {seekers.filter((s) => s.status === 'idle').map((s) => (
           <button key={s.id} disabled={busy} style={{ marginRight: 8, marginBottom: 6 }}
-            onClick={() => onSend(s.id)}>
+            onClick={() => onSend(s.id, dungeon)}>
             ▸ {s.name} · {s.cls_name} ур.{s.level} · выжил {s.runs_survived}
             {s.equipment?.weapon && ` · ⚔${s.equipment.weapon.name}`}
             {s.equipment?.armor && ` · 🛡${s.equipment.armor.name}`}
           </button>
         ))}
         {seekers.length < city.seeker_slots && (
-          <button className="primary" disabled={busy} onClick={onNewSeeker}>
+          <button className="primary" disabled={busy} onClick={() => onNewSeeker(dungeon)}>
             ▸ НОВЫЙ ИСКАТЕЛЬ
           </button>
         )}

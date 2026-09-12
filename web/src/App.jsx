@@ -10,6 +10,7 @@ export default function App() {
   const [user, setUser] = useState(null)
   const [city, setCity] = useState(null)
   const [creating, setCreating] = useState(false)
+  const [dungeon, setDungeon] = useState('kar_mord')
   const [run, setRun] = useState(null) // { run_id, status, state, turn_count, log }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -56,7 +57,7 @@ export default function App() {
     }
   }
 
-  const handleSendSeeker = (seekerId) => handleCreate({ seeker_id: seekerId })
+  const handleSendSeeker = (seekerId, dungeonId) => handleCreate({ seeker_id: seekerId, dungeon: dungeonId })
 
   const handleBuild = async (building) => {
     setBusy(true); setError('')
@@ -135,15 +136,16 @@ export default function App() {
   let screen
   if (!run && !creating) {
     screen = city ? (
-      <CityScreen city={city} user={user} busy={busy} error={error}
-        onSend={handleSendSeeker} onNewSeeker={() => { setCreating(true); setError('') }}
+      <CityScreen city={city} user={user} dungeons={meta?.dungeons} busy={busy} error={error}
+        onSend={handleSendSeeker} onNewSeeker={(d) => { setDungeon(d); setCreating(true); setError('') }}
         onBuild={handleBuild} onHire={handleHire} onCraft={handleCraft} />
     ) : (
       <CharacterCreate meta={meta} user={user} busy={busy} error={error} onCreate={handleCreate} />
     )
   } else if (!run && creating) {
     screen = (
-      <CharacterCreate meta={meta} user={user} busy={busy} error={error} onCreate={handleCreate}
+      <CharacterCreate meta={meta} user={user} busy={busy} error={error}
+        onCreate={(body) => handleCreate({ ...body, dungeon })}
         onBack={() => setCreating(false)} />
     )
   } else if (run.status === 'dead') {

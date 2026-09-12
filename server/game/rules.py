@@ -58,7 +58,7 @@ def mod(score: int) -> int:
     return (score - 10) // 2
 
 
-def seeker_to_state(seeker, name_override=None) -> dict:
+def seeker_to_state(seeker, dungeon: dict, name_override=None) -> dict:
     """Собрать боевое состояние из персистентного искателя."""
     c = CLASSES[seeker.cls]
     eq = dict(seeker.equipment or {})
@@ -71,17 +71,17 @@ def seeker_to_state(seeker, name_override=None) -> dict:
         "hp": seeker.max_hp, "max_hp": seeker.max_hp,
         "gold": 30, "inventory": list(c["start_items"]),
         "spells": list(c.get("spells", [])),
-        "location": "Врата подземелья Кар-Морд", "depth": 1, "flags": {},
+        "location": dungeon["start_location"], "depth": 1, "flags": {},
         "fate": 1,
         "backpack": {"capacity": 8 + pack_bonus, "res": {}},
         "equipment": eq,
-        "scene": {"place": "Врата подземелья Кар-Морд",
-                  "exits": ["внутрь, за врата"], "objects": [], "beings": []},
+        "scene": {"place": dungeon["start_location"],
+                  "exits": list(dungeon["start_exits"]), "objects": [], "beings": []},
         "party": [],
     }
 
 
-def new_character(name: str, race: str, cls: str) -> dict:
+def new_character(name: str, race: str, cls: str, dungeon: dict = None) -> dict:
     if race not in RACES or cls not in CLASSES:
         raise ValueError("unknown race/class")
     stats = {s: roll_3d6() for s in STATS}
@@ -104,9 +104,10 @@ def new_character(name: str, race: str, cls: str) -> dict:
         "equipment": {},
         "inventory": list(c["start_items"]),
         "spells": list(c.get("spells", [])),
-        "location": "Врата подземелья Кар-Морд",
-        "scene": {"place": "Врата подземелья Кар-Морд",
-                  "exits": ["внутрь, за врата"], "objects": [], "beings": []},
+        "location": (dungeon or {}).get("start_location", "Врата подземелья Кар-Морд"),
+        "scene": {"place": (dungeon or {}).get("start_location", "Врата подземелья Кар-Морд"),
+                  "exits": list((dungeon or {}).get("start_exits", ["внутрь, за врата"])),
+                  "objects": [], "beings": []},
         "depth": 1,
         "flags": {},
     }

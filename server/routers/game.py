@@ -10,6 +10,7 @@ from ..models import User, Run, Turn, City, Seeker
 from ..telegram_auth import get_tg_user
 from ..config import FREE_TURNS_PER_DAY, CONTEXT_RECENT_TURNS, SUMMARIZE_EVERY
 from ..game import rules, state as state_mod, master
+from ..game.dungeons import DUNGEONS, get_dungeon, DEFAULT_DUNGEON
 
 router = APIRouter(prefix="/api", tags=["game"])
 
@@ -101,6 +102,7 @@ def _active_run(db: Session, user: User) -> Run | None:
 def _run_payload(run: Run, last: dict | None = None) -> dict:
     return {
         "run_id": run.id,
+        "dungeon": run.dungeon or DEFAULT_DUNGEON,
         "status": run.status,
         "death_cause": run.death_cause,
         "state": run.state,
@@ -228,6 +230,7 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
 
 class NewRunIn(BaseModel):
     # либо seeker_id существующего, либо параметры нового искателя
+    dungeon: str = DEFAULT_DUNGEON
     seeker_id: int | None = None
     name: str | None = Field(default=None, min_length=1, max_length=24)
     race: str | None = None
@@ -250,6 +253,10 @@ def meta():
         "classes": {k: {"name": v["name"], "desc": v["desc"]} for k, v in rules.CLASSES.items()},
         "free_turns_per_day": FREE_TURNS_PER_DAY,
         "server_version": SERVER_VERSION,
+        "dungeons": [
+            {"id": did, "name": d["name"], "desc": d["desc"], "danger": d["danger"]}
+            for did, d in DUNGEONS.items()
+        ],
     }
 
 
@@ -292,13 +299,16 @@ def new_run(body: NewRunIn, tg=Depends(get_tg_user), db: Session = Depends(get_d
     _check_turn_limit(db, user)
 
     city = _get_or_create_city(db, user)
+    if body.dungeon not in DUNGEONS:
+        raise HTTPException(422, "Неизвестное подземелье")
+    dungeon = get_dungeon(body.dungeon)
     if body.seeker_id:
         seeker = db.query(Seeker).filter(
             Seeker.id == body.seeker_id, Seeker.user_id == user.id, Seeker.status == "idle"
         ).first()
         if not seeker:
             raise HTTPException(404, "Искатель не найден или занят")
-        char = rules.seeker_to_state(seeker)
+        char = rules.seeker_to_state(seeker, dungeon)
     else:
         if not (body.name and body.race and body.cls):
             raise HTTPException(422, "Для нового искателя нужны имя, раса и класс")
@@ -308,7 +318,7 @@ def new_run(body: NewRunIn, tg=Depends(get_tg_user), db: Session = Depends(get_d
         if living >= seeker_slots(city.buildings):
             raise HTTPException(409, "Все слоты искателей заняты. Отправь живого или улучши Тронный зал.")
         try:
-            char = rules.new_character(body.name, body.race, body.cls)
+            char = rules.new_character(body.name, body.race, body.cls, dungeon)
         except ValueError:
             raise HTTPException(422, "Неизвестная раса или класс")
         seeker = Seeker(user_id=user.id, name=char["name"], race=char["race"], cls=char["class"],
@@ -320,13 +330,13 @@ def new_run(body: NewRunIn, tg=Depends(get_tg_user), db: Session = Depends(get_d
     char["party"] = [dict(c) for c in (city.companions or [])]
     city.companions = []
 
-    run = Run(user_id=user.id, seeker_id=seeker.id, state=char)
+    run = Run(user_id=user.id, seeker_id=seeker.id, state=char, dungeon=body.dungeon)
     db.add(run)
     db.commit()
     db.refresh(run)
 
     try:
-        result = master.opening_scene(char)
+        result = master.opening_scene(char, dungeon_id=body.dungeon)
     except Exception:
         import traceback
         traceback.print_exc()
@@ -356,7 +366,8 @@ def make_turn(run_id: int, body: TurnIn, tg=Depends(get_tg_user), db: Session = 
     )[::-1]
 
     try:
-        result = master.run_turn(run.state, run.summary or "", recent, body.text.strip())
+        result = master.run_turn(run.state, run.summary or "", recent, body.text.strip(),
+                                 dungeon_id=run.dungeon or DEFAULT_DUNGEON)
     except Exception:
         import traceback
         traceback.print_exc()  # причина сбоя — в консоль Replit

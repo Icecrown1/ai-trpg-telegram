@@ -74,6 +74,7 @@ class Run(Base):
 
     status = Column(String(16), default="active")  # active | dead | won | abandoned | extracted
     seeker_id = Column(Integer, ForeignKey("seekers.id"), index=True)
+    dungeon = Column(String(32), default="kar_mord")
     death_cause = Column(Text)
 
     # character + world state — backend is the source of truth

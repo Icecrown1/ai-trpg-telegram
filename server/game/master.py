@@ -10,7 +10,8 @@ import anthropic
 from ..config import (ANTHROPIC_API_KEY, OPENAI_API_KEY, GM_PROVIDER,
                       GM_MODEL, SUMMARY_MODEL, MAX_TOKENS_TURN)
 from ..dice import roll
-from .prompts import SYSTEM_PROMPT, WORLD_BIBLE, SUMMARY_PROMPT
+from .prompts import SYSTEM_PROMPT, SUMMARY_PROMPT
+from .dungeons import get_dungeon, DEFAULT_DUNGEON
 from .resources import res_brief, backpack_load
 from .gear import defense
 
@@ -120,10 +121,12 @@ def _exec_roll(args: dict, state: dict) -> dict:
                 reason=reason, dc=dc)
 
 
-_SYSTEM_BLOCKS = [
-    {"type": "text", "text": SYSTEM_PROMPT},
-    {"type": "text", "text": WORLD_BIBLE, "cache_control": {"type": "ephemeral"}},
-]
+def _system_blocks(dungeon_id: str) -> list:
+    bible = get_dungeon(dungeon_id)["bible"]
+    return [
+        {"type": "text", "text": SYSTEM_PROMPT},
+        {"type": "text", "text": bible, "cache_control": {"type": "ephemeral"}},
+    ]
 
 
 def _state_brief(state: dict) -> str:
@@ -233,13 +236,14 @@ def _openai_create(**kwargs):
     raise last
 
 
-def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input: str) -> dict:
+def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input: str,
+                     dungeon_id: str = DEFAULT_DUNGEON) -> dict:
     intro = []
     if summary:
         intro.append(f"[СВОДКА ПРОШЛЫХ СОБЫТИЙ]\n{summary}")
     intro.append(f"[СОСТОЯНИЕ ПЕРСОНАЖА]\n{_state_brief(state)}")
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + WORLD_BIBLE},
+        {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + get_dungeon(dungeon_id)["bible"]},
         {"role": "user", "content": "\n\n".join(intro)},
         {"role": "assistant", "content": "Принято. Жду действий игрока."},
     ]
@@ -316,11 +320,12 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
             "game_over": False, "death_cause": None, "rolls": all_rolls}
 
 
-def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -> dict:
+def run_turn(state: dict, summary: str, recent_turns: list, player_input: str,
+             dungeon_id: str = DEFAULT_DUNGEON) -> dict:
     """One GM turn. Returns dict: narration, suggested_actions, state_delta,
     game_over, death_cause, rolls (list of dice results)."""
     if GM_PROVIDER == "openai":
-        return _run_turn_openai(state, summary, recent_turns, player_input)
+        return _run_turn_openai(state, summary, recent_turns, player_input, dungeon_id)
     messages = _build_messages(state, summary, recent_turns, player_input)
     all_rolls = []
 
@@ -328,7 +333,7 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -
         resp = _create(
             model=GM_MODEL,
             max_tokens=MAX_TOKENS_TURN,
-            system=_SYSTEM_BLOCKS,
+            system=_system_blocks(dungeon_id),
             tools=[ROLL_DICE_TOOL],
             messages=messages,
         )
@@ -385,7 +390,7 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -
     }
 
 
-def opening_scene(state: dict) -> dict:
+def opening_scene(state: dict, dungeon_id: str = DEFAULT_DUNGEON) -> dict:
     """First narration of a fresh run."""
     return run_turn(
         state, "", [],
@@ -395,6 +400,7 @@ def opening_scene(state: dict) -> dict:
         "чтобы игрок знал свой арсенал с первого хода. "
         "3) Вход в подземелье и первая развилка или деталь, требующая решения. "
         "Кубик не бросай — угроз в первой сцене нет.",
+        dungeon_id=dungeon_id,
     )
 
 
