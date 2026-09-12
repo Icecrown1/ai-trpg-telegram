@@ -65,6 +65,7 @@ export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }
           <span>XP <b>{s.xp}</b></span>
           <span>ЯРУС <b>{s.depth}</b></span>
           {s.fate > 0 && <span title="Очко судьбы: спасёт от смерти один раз">СУДЬБА <b>◆</b></span>}
+          {s.backpack && <span>РЮКЗАК <b>{Object.values(s.backpack.res || {}).reduce((a, b) => a + b, 0)}/{s.backpack.capacity}</b></span>}
           <span className="muted">ходы: {user.turns_left}</span>
         </div>
         <div className="hp-bar"><i style={{ width: `${hpPct}%` }} /></div>

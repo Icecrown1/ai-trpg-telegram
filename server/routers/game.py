@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import User, Run, Turn
+from ..models import User, Run, Turn, City
 from ..telegram_auth import get_tg_user
 from ..config import FREE_TURNS_PER_DAY, CONTEXT_RECENT_TURNS, SUMMARIZE_EVERY
 from ..game import rules, state as state_mod, master
@@ -60,6 +60,25 @@ def _check_turn_limit(db: Session, user: User):
     db.commit()
 
 
+DEFAULT_BUILDINGS = {"tavern": 1, "forge": 0, "mage_tower": 0, "throne": 0}
+
+
+def _get_or_create_city(db: Session, user: User) -> City:
+    city = db.query(City).filter(City.user_id == user.id).first()
+    if not city:
+        city = City(user_id=user.id, buildings=dict(DEFAULT_BUILDINGS), resources={}, gold=0)
+        db.add(city)
+        db.commit()
+        db.refresh(city)
+    return city
+
+
+def _city_payload(city: City) -> dict:
+    from ..game.resources import res_brief
+    return {"buildings": city.buildings, "gold": city.gold,
+            "resources": city.resources, "resources_named": res_brief(city.resources)}
+
+
 def _active_run(db: Session, user: User) -> Run | None:
     return (
         db.query(Run)
@@ -82,7 +101,8 @@ def _run_payload(run: Run, last: dict | None = None) -> dict:
 
 def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> dict:
     new_state = state_mod.apply_delta(dict(run.state), result.get("state_delta") or {})
-    game_over = bool(result.get("game_over")) or new_state["hp"] <= 0
+    extracted = bool(result.get("extracted")) and new_state["hp"] > 0
+    game_over = (bool(result.get("game_over")) or new_state["hp"] <= 0) and not extracted
 
     # Очко судьбы: один раз за забег смертельный исход превращается в чудом-выжил с 1 HP
     if game_over and new_state.get("fate", 0) > 0:
@@ -119,6 +139,21 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
     run.state = new_state
     run.turn_count += 1
 
+    if extracted:
+        run.status = "extracted"
+        user = run.user
+        user.total_runs += 1
+        user.deepest_level = max(user.deepest_level, new_state.get("depth", 1))
+        user.best_gold = max(user.best_gold, new_state.get("gold", 0))
+        # лут уезжает в вечный город
+        city = _get_or_create_city(db, user)
+        cres = dict(city.resources or {})
+        hauled = (new_state.get("backpack") or {}).get("res", {}) or {}
+        for rid, cnt in hauled.items():
+            cres[rid] = cres.get(rid, 0) + int(cnt)
+        city.resources = cres
+        city.gold = (city.gold or 0) + int(new_state.get("gold", 0))
+
     if game_over:
         run.status = "dead"
         run.death_cause = result.get("death_cause") or "Погиб в глубинах Кар-Морда"
@@ -146,12 +181,16 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
             except Exception:
                 db.rollback()  # summary failure must never kill the game
 
-    return _run_payload(run, last={
+    payload = _run_payload(run, last={
         "narration": result["narration"],
         "suggested_actions": result.get("suggested_actions", []),
         "rolls": result.get("rolls", []),
         "scene_art": art,
     })
+    if extracted:
+        payload["hauled"] = (new_state.get("backpack") or {}).get("res", {})
+        payload["city"] = _city_payload(_get_or_create_city(db, run.user))
+    return payload
 
 
 # ---------- schemas ----------
@@ -200,6 +239,7 @@ def me(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
             for t in turns[-20:]
         ]
     return {
+        "city": _city_payload(_get_or_create_city(db, user)),
         "user": {
             "first_name": user.first_name,
             "turns_left": max(0, FREE_TURNS_PER_DAY - (user.turns_today if user.turns_date == date.today() else 0)),

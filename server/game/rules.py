@@ -1,5 +1,6 @@
 """Character rules in the spirit of PLATO dnd / AD&D. All numbers server-side."""
 from ..dice import roll_3d6
+from .resources import BACKPACK_CAPACITY_DEFAULT
 
 STATS = ["STR", "INT", "WIS", "DEX", "CON", "CHA"]
 
@@ -59,6 +60,7 @@ def new_character(name: str, race: str, cls: str) -> dict:
         "max_hp": max_hp,
         "gold": 30,
         "fate": 1,  # очко судьбы: один раз спасает от смерти за забег
+        "backpack": {"capacity": BACKPACK_CAPACITY_DEFAULT, "res": {}},
         "inventory": list(c["start_items"]),
         "spells": list(c.get("spells", [])),
         "location": "Врата подземелья Кар-Морд",

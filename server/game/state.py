@@ -47,6 +47,31 @@ def apply_delta(state: dict, delta: dict) -> dict:
         except (TypeError, ValueError):
             pass
 
+    # ресурсы: resources_add / resources_remove = {"wood": 2}; рюкзак ограничен вместимостью
+    from .resources import RESOURCES, backpack_load
+    bp = state.setdefault("backpack", {"capacity": 8, "res": {}})
+    if isinstance(delta.get("resources_add"), dict):
+        for rid, cnt in delta["resources_add"].items():
+            if rid not in RESOURCES:
+                continue
+            try:
+                cnt = max(0, int(cnt))
+            except (TypeError, ValueError):
+                continue
+            free = bp["capacity"] - backpack_load(bp["res"])
+            take = min(cnt, max(0, free))
+            if take:
+                bp["res"][rid] = bp["res"].get(rid, 0) + take
+    if isinstance(delta.get("resources_remove"), dict):
+        for rid, cnt in delta["resources_remove"].items():
+            if rid in bp["res"]:
+                try:
+                    bp["res"][rid] = max(0, bp["res"][rid] - max(0, int(cnt)))
+                except (TypeError, ValueError):
+                    continue
+                if bp["res"][rid] == 0:
+                    del bp["res"][rid]
+
     if isinstance(delta.get("scene"), dict):
         sc = delta["scene"]
         clean = {}

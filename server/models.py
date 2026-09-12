@@ -28,6 +28,19 @@ class User(Base):
     runs = relationship("Run", back_populates="user")
 
 
+class City(Base):
+    """Вечный мета-слой игрока: город-замок. Переживает смерти искателей."""
+    __tablename__ = "cities"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    buildings = Column(JSON, nullable=False, default=dict)  # {"tavern": 1, "forge": 0, ...}
+    resources = Column(JSON, nullable=False, default=dict)  # {"wood": 12, "iron": 3}
+    gold = Column(Integer, default=0)
+
+
 class Run(Base):
     __tablename__ = "runs"
 

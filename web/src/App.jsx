@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, haptic } from './api.js'
 import CharacterCreate from './components/CharacterCreate.jsx'
 import GameScreen from './components/GameScreen.jsx'
-import DeathScreen from './components/DeathScreen.jsx'
+import DeathScreen, { ExtractScreen } from './components/DeathScreen.jsx'
 
 export default function App() {
   const [meta, setMeta] = useState(null)
@@ -108,6 +108,8 @@ export default function App() {
     )
   } else if (run.status === 'dead') {
     screen = <DeathScreen run={run} onNewRun={() => { setRun(null); setError('') }} />
+  } else if (run.status === 'extracted') {
+    screen = <ExtractScreen run={run} hauled={run.hauled} onNewRun={() => { setRun(null); setError('') }} />
   } else {
     screen = (
       <GameScreen

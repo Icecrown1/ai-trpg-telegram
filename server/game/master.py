@@ -11,6 +11,7 @@ from ..config import (ANTHROPIC_API_KEY, OPENAI_API_KEY, GM_PROVIDER,
                       GM_MODEL, SUMMARY_MODEL, MAX_TOKENS_TURN)
 from ..dice import roll
 from .prompts import SYSTEM_PROMPT, WORLD_BIBLE, SUMMARY_PROMPT
+from .resources import res_brief, backpack_load
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -115,6 +116,11 @@ def _state_brief(state: dict) -> str:
             "заклинания": state.get("spells", []),
             "локация": state["location"], "ярус": state["depth"],
             "сцена": state.get("scene", {}),
+            "рюкзак": {
+                "занято": backpack_load((state.get("backpack") or {}).get("res")),
+                "вместимость": (state.get("backpack") or {}).get("capacity", 8),
+                "ресурсы": res_brief((state.get("backpack") or {}).get("res")),
+            },
             "флаги": state.get("flags", {}),
         },
         ensure_ascii=False,
@@ -271,6 +277,7 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
         parsed.setdefault("scene_art", None)
         parsed.setdefault("game_over", False)
         parsed.setdefault("death_cause", None)
+        parsed.setdefault("extracted", False)
         parsed["rolls"] = all_rolls
         return parsed
 
@@ -337,6 +344,7 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str) -
         parsed.setdefault("scene_art", None)
         parsed.setdefault("game_over", False)
         parsed.setdefault("death_cause", None)
+        parsed.setdefault("extracted", False)
         parsed["rolls"] = all_rolls
         return parsed
 
