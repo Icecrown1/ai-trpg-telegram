@@ -20,6 +20,20 @@ except Exception:
 
 app = FastAPI(title="AI-TRPG Telegram Mini App")
 
+
+# Период отладки: каждый необработанный сбой отвечает своим настоящим именем,
+# а полный трейс уходит в логи. Перед публичным запуском заменить на общий текст.
+@app.exception_handler(Exception)
+async def _debug_500(request, exc):
+    import traceback, sys
+    traceback.print_exc()
+    print(f"[500] {request.method} {request.url.path}", file=sys.stderr)
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"[{type(exc).__name__}] {str(exc)[:400]} · {request.url.path}"},
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Mini App is served from the same origin in prod; dev needs this
