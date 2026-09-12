@@ -40,6 +40,7 @@ export const api = {
   craft: (item_id, seeker_id) => req('/api/city/craft', { method: 'POST', body: JSON.stringify({ item_id, seeker_id }) }),
   enchant: (item_id, seeker_id) => req('/api/city/enchant', { method: 'POST', body: JSON.stringify({ item_id, seeker_id }) }),
   dailyClaim: () => req('/api/city/daily_claim', { method: 'POST' }),
+  prologueDone: () => req('/api/city/prologue_done', { method: 'POST' }),
 }
 
 export function haptic(type = 'light') {

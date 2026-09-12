@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, haptic } from './api.js'
 import CharacterCreate from './components/CharacterCreate.jsx'
 import CityScreen from './components/CityScreen.jsx'
+import PrologueScreen from './components/PrologueScreen.jsx'
 import GameScreen from './components/GameScreen.jsx'
 import DeathScreen, { ExtractScreen } from './components/DeathScreen.jsx'
 
@@ -80,6 +81,15 @@ export default function App() {
     finally { setBusy(false) }
   }
 
+  const handlePrologueDone = async () => {
+    setBusy(true); setError('')
+    try {
+      setCity(await api.prologueDone())
+      setCreating(true) // сразу к созданию первого искателя — как велел Одо
+    } catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }
+
   const handleDaily = async () => {
     setBusy(true); setError('')
     try { setCity(await api.dailyClaim()) }
@@ -148,7 +158,9 @@ export default function App() {
   }
 
   let screen
-  if (!run && !creating) {
+  if (!run && !creating && city && !(city.flags || {}).prologue_done) {
+    screen = <PrologueScreen busy={busy} onDone={handlePrologueDone} />
+  } else if (!run && !creating) {
     screen = city ? (
       <CityScreen city={city} user={user} dungeons={meta?.dungeons} busy={busy} error={error}
         onSend={handleSendSeeker} onNewSeeker={(d) => { setDungeon(d); setCreating(true); setError('') }}

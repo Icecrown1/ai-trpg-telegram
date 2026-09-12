@@ -377,3 +377,17 @@ def daily_claim(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
     city.flags = {**(city.flags or {}), "daily_done": date.today().isoformat()}
     db.commit()
     return city_payload(db, city, user)
+
+
+@router.post("/prologue_done")
+def prologue_done(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.tg_id == tg["id"]).first()
+    if not user:
+        user = User(tg_id=tg["id"], username=tg.get("username"), first_name=tg.get("first_name"))
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    city = get_or_create_city(db, user)
+    city.flags = {**(city.flags or {}), "prologue_done": True}
+    db.commit()
+    return city_payload(db, city, user)
