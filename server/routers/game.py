@@ -88,6 +88,7 @@ def _finish_seeker(db: Session, run: Run, died: bool, final_state: dict):
         s.max_hp = final_state.get("max_hp", s.max_hp)
         s.runs_survived += 1
         s.equipment = final_state.get("equipment", s.equipment) or {}  # износ/поломки сохраняются
+        s.inventory = final_state.get("inventory", s.inventory) or []   # найденное остаётся при нём
 
 
 def _active_run(db: Session, user: User) -> Run | None:
@@ -322,7 +323,8 @@ def new_run(body: NewRunIn, tg=Depends(get_tg_user), db: Session = Depends(get_d
         except ValueError:
             raise HTTPException(422, "Неизвестная раса или класс")
         seeker = Seeker(user_id=user.id, name=char["name"], race=char["race"], cls=char["class"],
-                        level=1, xp=0, stats=char["stats"], max_hp=char["max_hp"])
+                        level=1, xp=0, stats=char["stats"], max_hp=char["max_hp"],
+                        inventory=list(char["inventory"]))
         db.add(seeker)
         db.flush()
     seeker.status = "in_run"
