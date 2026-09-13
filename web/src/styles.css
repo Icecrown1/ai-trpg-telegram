@@ -368,3 +368,12 @@ input::placeholder { color: var(--amber-faint); }
   -webkit-overflow-scrolling: touch;
 }
 .screen.scrollable > * { flex-shrink: 0; }
+
+/* на прокручиваемых экранах вкладочные списки не схлопываются:
+   страница скроллится сама, внутренний скроллер не нужен */
+.screen.scrollable .log {
+  flex: 0 0 auto;
+  overflow-y: visible;
+  min-height: auto;
+  max-height: none;
+}
