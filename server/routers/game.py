@@ -155,8 +155,18 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
     if ss > 0:
         new_state["flags"]["stone_skin"] = ss - 1
 
-    _ART_TAGS = {"gates","stairs","skull","goblin","rat","undead","cultist","merchant",
-                 "chest","altar","potion","well","torch","boss"}
+    _ART_TAGS = {
+        # общие
+        "gates","stairs","skull","goblin","rat","undead","cultist","merchant",
+        "chest","altar","potion","well","torch","boss",
+        "spider","ghost","door","key","campfire","bones",
+        # Кар-Морд
+        "forge_dungeon","gold_vein","lift","cavein","flooded_hall","priest",
+        # Прелый Лес
+        "forest","wolf","rootwalker","witch_hut","swamp_lights","hanging_oak","pastor",
+        # Обитель
+        "scriptorium","bell","cage","stitched","candles","archimandrite",
+    }
     art = result.get("scene_art")
     art = art if art in _ART_TAGS else None
     if art:
