@@ -14,12 +14,14 @@ export default function App() {
   const [creating, setCreating] = useState(false)
   const [dungeon, setDungeon] = useState('kar_mord')
   const [entered, setEntered] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [run, setRun] = useState(null) // { run_id, status, state, turn_count, log }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [booted, setBooted] = useState(false)
 
   useEffect(() => {
+    api.adminCheck().then((r) => setIsAdmin(!!r.admin)).catch(() => {})
     Promise.all([api.meta(), api.me(), api.city()])
       .then(([m, me, c]) => {
         setMeta(m)
@@ -97,6 +99,17 @@ export default function App() {
     try {
       const { state } = await api.talent(run.run_id, talentId)
       setRun((r) => ({ ...r, state }))
+    } catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }
+
+  const handleAdmin = async (what) => {
+    setBusy(true); setError('')
+    try {
+      await api.adminReset(what)
+      if (what === 'reset_account') { setRun(null) }
+      const [me, c] = await Promise.all([api.me(), api.city()])
+      setUser(me.user); setCity(c); if (!me.run) setRun(null)
     } catch (e) { setError(e.message) }
     finally { setBusy(false) }
   }
@@ -185,6 +198,7 @@ export default function App() {
   } else if (!run && !creating) {
     screen = city ? (
       <CityScreen city={city} user={user} dungeons={meta?.dungeons} busy={busy} error={error}
+        isAdmin={isAdmin} onAdmin={handleAdmin}
         onSend={handleSendSeeker} onNewSeeker={(d) => { setDungeon(d); setCreating(true); setError('') }}
         onBuild={handleBuild} onHire={handleHire} onCraft={handleCraft}
         onEnchant={handleEnchant} onDaily={handleDaily} />

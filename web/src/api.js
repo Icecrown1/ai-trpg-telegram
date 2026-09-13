@@ -41,6 +41,8 @@ export const api = {
   enchant: (item_id, seeker_id) => req('/api/city/enchant', { method: 'POST', body: JSON.stringify({ item_id, seeker_id }) }),
   dailyClaim: () => req('/api/city/daily_claim', { method: 'POST' }),
   prologueDone: () => req('/api/city/prologue_done', { method: 'POST' }),
+  adminCheck: () => req('/api/admin/check'),
+  adminReset: (what) => req(`/api/admin/${what}`, { method: 'POST' }),
   levelup: (runId, stat) => req(`/api/run/${runId}/levelup`, { method: 'POST', body: JSON.stringify({ stat }) }),
   talent: (runId, talent_id) => req(`/api/run/${runId}/talent`, { method: 'POST', body: JSON.stringify({ talent_id }) }),
 }

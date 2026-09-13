@@ -3,7 +3,7 @@ import SceneArt from './SceneArt.jsx'
 
 const B_ORDER = ['tavern', 'throne', 'forge', 'mage_tower']
 
-export default function CityScreen({ city, user, dungeons, busy, error, onSend, onNewSeeker, onBuild, onHire, onCraft, onEnchant, onDaily }) {
+export default function CityScreen({ city, user, dungeons, busy, error, onSend, onNewSeeker, onBuild, onHire, onCraft, onEnchant, onDaily, isAdmin, onAdmin }) {
   const [tab, setTab] = useState('city')
   const [craftFor, setCraftFor] = useState(null)
   const [dungeon, setDungeon] = useState((dungeons && dungeons[0]?.id) || 'kar_mord')
@@ -185,6 +185,20 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
             : <button disabled={busy || !city.daily.can_claim} onClick={onDaily}>
                 {city.daily.can_claim ? '▸ Сдать со склада' : 'На складе не хватает'}
               </button>}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="panel" style={{ borderStyle: 'dotted' }}>
+          <span className="panel-title">⚙ Админка (тест)</span>
+          <div className="actions">
+            <button disabled={busy} onClick={() => onAdmin('reset_cooldown')}>Сбросить КД попыток</button>
+            <button disabled={busy} onClick={() => onAdmin('reset_prologue')}>Пролог заново</button>
+            <button disabled={busy} style={{ borderColor: 'var(--red, #f66)' }}
+              onClick={() => window.confirm('Снести город, искателей и все забеги?') && onAdmin('reset_account')}>
+              Полный сброс
+            </button>
+          </div>
         </div>
       )}
 

@@ -11,6 +11,9 @@ GM_PROVIDER = os.getenv("GM_PROVIDER", "anthropic").strip().lower()
 # --- Models ---
 GM_MODEL = os.getenv("GM_MODEL", "claude-haiku-4-5")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+# Telegram ID админов через запятую (в dev-режиме админ всегда)
+ADMIN_TG_IDS = {int(x) for x in os.getenv("ADMIN_TG_IDS", "").replace(" ", "").split(",") if x}
+
 # Второй проход-корректор русского текста (для openai включён по умолчанию)
 GM_PROOFREAD = os.getenv("GM_PROOFREAD", "1") == "1"
 # Глубина размышлений openai-моделей: minimal | low | medium
