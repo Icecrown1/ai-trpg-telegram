@@ -98,13 +98,13 @@ def seeker_to_state(seeker, dungeon: dict, name_override=None) -> dict:
 def new_character(name: str, race: str, cls: str, dungeon: dict = None) -> dict:
     if race not in RACES or cls not in CLASSES:
         raise ValueError("unknown race/class")
+    c = CLASSES[cls]
     # честные шесть 3d6, но лучшие броски уходят в профильные статы класса
     rolls = sorted((roll_3d6() for _ in STATS), reverse=True)
     priority = c.get("stat_priority", list(STATS))
     stats = {stat: rolls[i] for i, stat in enumerate(priority)}
     for s, m in RACES[race]["mods"].items():
         stats[s] = max(3, min(18, stats[s] + m))
-    c = CLASSES[cls]
     max_hp = c["hit_die"] + max(0, mod(stats["CON"]))
     return {
         "name": name[:24] or "Безымянный",
