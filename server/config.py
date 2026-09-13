@@ -11,6 +11,10 @@ GM_PROVIDER = os.getenv("GM_PROVIDER", "anthropic").strip().lower()
 # --- Models ---
 GM_MODEL = os.getenv("GM_MODEL", "claude-haiku-4-5")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+# Второй проход-корректор русского текста (для openai включён по умолчанию)
+GM_PROOFREAD = os.getenv("GM_PROOFREAD", "1") == "1"
+# Глубина размышлений openai-моделей: minimal | low | medium
+OPENAI_REASONING = os.getenv("OPENAI_REASONING", "low")
 if GM_PROVIDER == "openai" and GM_MODEL.startswith("claude"):
     GM_MODEL = OPENAI_MODEL  # GM_MODEL в секретах остался клодовским — берём openai-дефолт
 SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", GM_MODEL)

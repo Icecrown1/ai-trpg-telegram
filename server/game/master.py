@@ -8,7 +8,8 @@ import time
 import anthropic
 
 from ..config import (ANTHROPIC_API_KEY, OPENAI_API_KEY, GM_PROVIDER,
-                      GM_MODEL, SUMMARY_MODEL, MAX_TOKENS_TURN)
+                      GM_MODEL, SUMMARY_MODEL, MAX_TOKENS_TURN,
+                      GM_PROOFREAD, OPENAI_REASONING)
 from ..dice import roll
 from .prompts import SYSTEM_PROMPT, SUMMARY_PROMPT
 from .dungeons import get_dungeon, DEFAULT_DUNGEON
@@ -214,6 +215,39 @@ def _extract_json(text: str) -> dict:
             "suggested_actions": []}
 
 
+_PROOFREAD_PROMPT = (
+    "Ты — корректор русского художественного текста. Исправь ТОЛЬКО язык:\n"
+    "- несуществующие и исковерканные слова замени существующими по смыслу\n"
+    "- почини согласование рода, числа, падежа и лица («ты пятишься», не «ты пятится»)\n"
+    "- слова латиницей переведи на русский (кроме обозначений кубиков вроде d20, 1d6)\n"
+    "- обрубленные идиомы допиши или замени простыми словами\n"
+    "ЗАПРЕЩЕНО: менять события, имена, названия, числа, реплики по смыслу, добавлять или "
+    "убирать предложения, менять стиль. Если текст уже чист — верни его без изменений.\n"
+    "Верни ТОЛЬКО исправленный текст, без комментариев и кавычек."
+)
+
+
+def _proofread(narration: str) -> str:
+    """Быстрый второй проход: чинит язык, не трогая содержание. Ошибся — вернём оригинал."""
+    try:
+        kwargs = dict(
+            model=GM_MODEL,
+            max_completion_tokens=MAX_TOKENS_TURN,
+            messages=[{"role": "system", "content": _PROOFREAD_PROMPT},
+                      {"role": "user", "content": narration}],
+        )
+        if GM_MODEL.startswith(("gpt-5", "o1", "o3", "o4")):
+            kwargs["reasoning_effort"] = "minimal"
+        resp = _openai_create(**kwargs)
+        fixed = (resp.choices[0].message.content or "").strip()
+        # страховка: корректор не должен ни съесть текст, ни раздуть его
+        if len(fixed) >= len(narration) * 0.6 and len(fixed) <= len(narration) * 1.5:
+            return fixed
+    except Exception as e:
+        print(f"[PROOFREAD SKIP] {type(e).__name__}: {e}", file=sys.stderr)
+    return narration
+
+
 OPENAI_TOOL = {
     "type": "function",
     "function": {
@@ -267,7 +301,7 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
             messages=messages,
         )
         if GM_MODEL.startswith(("gpt-5", "o1", "o3", "o4")):
-            kwargs["reasoning_effort"] = "low"
+            kwargs["reasoning_effort"] = OPENAI_REASONING
         resp = _openai_create(**kwargs)
         msg = resp.choices[0].message
 
@@ -318,6 +352,8 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
         parsed.setdefault("death_cause", None)
         parsed.setdefault("extracted", False)
         parsed["rolls"] = all_rolls
+        if GM_PROOFREAD:
+            parsed["narration"] = _proofread(str(parsed["narration"]))
         return parsed
 
     return {"narration": "Подземелье замерло в нерешительности. Повтори действие.",
