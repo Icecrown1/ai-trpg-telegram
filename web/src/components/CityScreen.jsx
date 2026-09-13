@@ -12,7 +12,7 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
   const seekers = city.seekers || []
 
   return (
-    <div className="screen">
+    <div className="screen scrollable">
       <SceneArt tag="city" />
       <div className="panel">
         <span className="panel-title">Город у врат Кар-Морда</span>

@@ -360,3 +360,11 @@ input::placeholder { color: var(--amber-faint); }
 }
 .press-key.blink { color: var(--amber); animation: pressBlink 1.4s steps(2) infinite; }
 @keyframes pressBlink { 50% { opacity: 0.25; } }
+
+/* экраны с длинным контентом: прокрутка всей страницы */
+.screen.scrollable {
+  overflow-y: auto;
+  justify-content: flex-start;
+  -webkit-overflow-scrolling: touch;
+}
+.screen.scrollable > * { flex-shrink: 0; }

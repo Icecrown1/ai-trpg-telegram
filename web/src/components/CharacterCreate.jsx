@@ -16,7 +16,7 @@ export default function CharacterCreate({ meta, user, busy, error, onCreate, onB
   const canGo = name.trim().length > 0 && !busy
 
   return (
-    <div className="screen">
+    <div className="screen scrollable">
       <pre className="title-art">{TITLE}</pre>
       <p className="muted" style={{ textAlign: 'center' }}>
         текстовое подземелье · пермасмерть · честный d20
