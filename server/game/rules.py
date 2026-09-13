@@ -6,39 +6,46 @@ STATS = ["STR", "INT", "WIS", "DEX", "CON", "CHA"]
 
 CLASSES = {
     "fighter": {
+        "stat_priority": ["STR", "CON", "DEX", "WIS", "CHA", "INT"],
         "name": "Воин", "hit_die": 10,
         "start_items": ["Меч", "Кольчуга", "Факел"],
         "desc": "Сталь решает всё. Больше HP, точнее удары.",
     },
     "mage": {
+        "stat_priority": ["INT", "WIS", "DEX", "CON", "CHA", "STR"],
         "name": "Маг", "hit_die": 4,
         "start_items": ["Посох", "Гримуар", "Свеча"],
         "desc": "Хрупок, но одно заклинание меняет бой.",
         "spells": ["Магическая стрела", "Свет", "Сон"],
     },
     "cleric": {
+        "stat_priority": ["WIS", "CON", "STR", "CHA", "INT", "DEX"],
         "name": "Клирик", "hit_die": 8,
         "start_items": ["Булава", "Щит", "Святой символ"],
         "desc": "Лечит раны и жжёт нежить верой.",
         "spells": ["Лечение ран", "Свет", "Защита от зла"],
     },
     "rogue": {
+        "stat_priority": ["DEX", "CHA", "INT", "WIS", "CON", "STR"],
         "name": "Плут", "hit_die": 6,
         "start_items": ["Кинжал", "Отмычки", "Верёвка"],
         "desc": "Ловушки, тени, чужие карманы.",
     },
     "archer": {
+        "stat_priority": ["DEX", "WIS", "CON", "STR", "INT", "CHA"],
         "name": "Лучник", "hit_die": 8,
         "start_items": ["Короткий лук", "Колчан стрел", "Охотничий нож"],
         "desc": "Смерть с расстояния. Ловкость решает.",
     },
     "templar": {
+        "stat_priority": ["STR", "CON", "WIS", "CHA", "INT", "DEX"],
         "name": "Храмовник", "hit_die": 10,
         "start_items": ["Двуручный меч", "Латный нагрудник", "Обет на пергаменте"],
         "desc": "Сталь и вера в одном ударе. Медлителен, но неумолим.",
         "spells": ["Кара света", "Стойкость"],
     },
     "druid": {
+        "stat_priority": ["WIS", "CON", "INT", "DEX", "CHA", "STR"],
         "name": "Друид", "hit_die": 8,
         "start_items": ["Посох из живого дуба", "Мешочек трав", "Костяной амулет"],
         "desc": "Говорит с тем, что растёт и рычит.",
@@ -91,7 +98,10 @@ def seeker_to_state(seeker, dungeon: dict, name_override=None) -> dict:
 def new_character(name: str, race: str, cls: str, dungeon: dict = None) -> dict:
     if race not in RACES or cls not in CLASSES:
         raise ValueError("unknown race/class")
-    stats = {s: roll_3d6() for s in STATS}
+    # честные шесть 3d6, но лучшие броски уходят в профильные статы класса
+    rolls = sorted((roll_3d6() for _ in STATS), reverse=True)
+    priority = c.get("stat_priority", list(STATS))
+    stats = {stat: rolls[i] for i, stat in enumerate(priority)}
     for s, m in RACES[race]["mods"].items():
         stats[s] = max(3, min(18, stats[s] + m))
     c = CLASSES[cls]

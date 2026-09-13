@@ -1,7 +1,7 @@
 import SceneArt from './SceneArt.jsx'
 
-const GAME_TITLE = 'КАР-МОРД'
-const TAGLINE = 'город наверху · тьма внизу'
+const GAME_TITLE = 'THE LAST KING'
+const TAGLINE = 'последний город · последний король'
 
 export default function TitleScreen({ ready, onEnter }) {
   return (

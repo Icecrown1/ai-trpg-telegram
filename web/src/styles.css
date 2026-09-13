@@ -341,7 +341,7 @@ input::placeholder { color: var(--amber-faint); }
 .title-art { width: 100%; }
 .title-art .scene-img { width: min(100%, 460px); }
 .game-title {
-  font-size: 34px;
+  font-size: 26px;
   letter-spacing: 0.35em;
   margin: 4px 0 0 0.35em; /* компенсация трекинга */
   color: var(--amber);
