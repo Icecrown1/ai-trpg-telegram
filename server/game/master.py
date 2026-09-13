@@ -14,6 +14,7 @@ from .prompts import SYSTEM_PROMPT, SUMMARY_PROMPT
 from .dungeons import get_dungeon, DEFAULT_DUNGEON
 from .resources import res_brief, backpack_load
 from .gear import defense
+from .talents import TALENTS, stat_check_bonus, attack_bonus as talent_attack_bonus
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -102,7 +103,7 @@ def _exec_roll(args: dict, state: dict) -> dict:
     reason = args.get("reason", "")
     if stat in _STAT_RU:
         score = int((state.get("stats") or {}).get(stat, 10))
-        stat_mod = (score - 10) // 2
+        stat_mod = (score - 10) // 2 + stat_check_bonus(state.get("talents"), stat)
         reason = f"{reason} ({_STAT_RU[stat]})" if reason else f"Проверка {_STAT_RU[stat]}"
 
     kind = args.get("kind") or "check"
@@ -111,7 +112,7 @@ def _exec_roll(args: dict, state: dict) -> dict:
         dc = defense(state)  # СЛ атак по игроку диктует сервер: броня работает всегда
     elif kind == "player_attack":
         weapon = (state.get("equipment") or {}).get("weapon") or {}
-        weapon_mod = int(weapon.get("atk", 0))
+        weapon_mod = int(weapon.get("atk", 0)) + talent_attack_bonus(state.get("talents"))
         if weapon_mod:
             reason = f"{reason} [{weapon.get('name', 'оружие')} +{weapon_mod}]"
     elif kind == "damage":
@@ -137,6 +138,10 @@ def _state_brief(state: dict) -> str:
             "hp": f'{state["hp"]}/{state["max_hp"]}', "золото": state["gold"],
             "характеристики": state["stats"], "инвентарь": state["inventory"],
             "заклинания": state.get("spells", []),
+            "таланты": [
+                {"название": TALENTS[t]["name"], "суть": TALENTS[t]["desc"]}
+                for t in state.get("talents", []) if t in TALENTS
+            ],
             "локация": state["location"], "ярус": state["depth"],
             "сцена": state.get("scene", {}),
             "партия": [

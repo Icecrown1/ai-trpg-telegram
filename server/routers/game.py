@@ -90,6 +90,10 @@ def _finish_seeker(db: Session, run: Run, died: bool, final_state: dict):
         s.runs_survived += 1
         s.equipment = final_state.get("equipment", s.equipment) or {}  # износ/поломки сохраняются
         s.inventory = final_state.get("inventory", s.inventory) or []   # найденное остаётся при нём
+        s.stats = final_state.get("stats", s.stats)
+        s.talents = final_state.get("talents", s.talents) or []
+        s.stat_points = int(final_state.get("stat_points", 0))
+        s.talent_points = int(final_state.get("talent_points", 0))
 
 
 def _active_run(db: Session, user: User) -> Run | None:
@@ -116,7 +120,14 @@ def _run_payload(run: Run, last: dict | None = None) -> dict:
 def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> dict:
     # deepcopy обязателен: изменение только вложенных структур (рюкзак/сцена/инвентарь)
     # при shallow-копии не считалось изменением атрибута и не попадало в базу
+    level_before = int(run.state.get("level", 1))
     new_state = state_mod.apply_delta(copy.deepcopy(run.state), result.get("state_delta") or {})
+    if new_state.get("level", 1) > level_before:
+        note = f"\n\n⬆ УРОВЕНЬ {new_state['level']}! Раны затягиваются. +1 очко характеристик"
+        if new_state["level"] % 2 == 0:
+            note += " и выбор таланта"
+        note += " — раскрой лист персонажа."
+        result["narration"] = result.get("narration", "").rstrip() + note
     extracted = bool(result.get("extracted")) and new_state["hp"] > 0
     game_over = (bool(result.get("game_over")) or new_state["hp"] <= 0) and not extracted
 
@@ -270,6 +281,10 @@ def meta():
         "classes": {k: {"name": v["name"], "desc": v["desc"]} for k, v in rules.CLASSES.items()},
         "free_turns_per_day": FREE_TURNS_PER_DAY,
         "server_version": SERVER_VERSION,
+        "talents": {
+            tid: {"name": t["name"], "desc": t["desc"]}
+            for tid, t in __import__("server.game.talents", fromlist=["TALENTS"]).TALENTS.items()
+        },
         "dungeons": [
             {"id": did, "name": d["name"], "desc": d["desc"], "danger": d["danger"]}
             for did, d in DUNGEONS.items()
@@ -411,6 +426,57 @@ def make_turn(run_id: int, body: TurnIn, tg=Depends(get_tg_user), db: Session = 
 @router.get("/classes_meta")
 def classes_meta():
     return {"classes": {k: {"name": v["name"], "desc": v["desc"]} for k, v in rules.CLASSES.items()}}
+
+
+class LevelupIn(BaseModel):
+    stat: str
+
+
+@router.post("/run/{run_id}/levelup")
+def spend_stat(run_id: int, body: LevelupIn, tg=Depends(get_tg_user), db: Session = Depends(get_db)):
+    user = _get_or_create_user(db, tg)
+    run = db.query(Run).filter(Run.id == run_id, Run.user_id == user.id, Run.status == "active").first()
+    if not run:
+        raise HTTPException(404, "Активный забег не найден")
+    st = copy.deepcopy(run.state)
+    if int(st.get("stat_points", 0)) <= 0:
+        raise HTTPException(409, "Нет свободных очков характеристик")
+    if body.stat not in rules.STATS:
+        raise HTTPException(422, "Нет такой характеристики")
+    if int(st["stats"].get(body.stat, 10)) >= 20:
+        raise HTTPException(409, "Характеристика на пределе смертного (20)")
+    st["stats"][body.stat] = int(st["stats"].get(body.stat, 10)) + 1
+    st["stat_points"] = int(st["stat_points"]) - 1
+    run.state = st
+    db.commit()
+    return {"state": run.state}
+
+
+class TalentIn(BaseModel):
+    talent_id: str
+
+
+@router.post("/run/{run_id}/talent")
+def pick_talent(run_id: int, body: TalentIn, tg=Depends(get_tg_user), db: Session = Depends(get_db)):
+    from ..game.talents import TALENTS, capacity_bonus
+    user = _get_or_create_user(db, tg)
+    run = db.query(Run).filter(Run.id == run_id, Run.user_id == user.id, Run.status == "active").first()
+    if not run:
+        raise HTTPException(404, "Активный забег не найден")
+    st = copy.deepcopy(run.state)
+    if int(st.get("talent_points", 0)) <= 0:
+        raise HTTPException(409, "Выбор таланта пока не заслужен")
+    if body.talent_id not in TALENTS:
+        raise HTTPException(422, "Нет такого таланта")
+    if body.talent_id in (st.get("talents") or []):
+        raise HTTPException(409, "Этот талант уже освоен")
+    st["talents"] = list(st.get("talents") or []) + [body.talent_id]
+    st["talent_points"] = int(st["talent_points"]) - 1
+    if TALENTS[body.talent_id]["kind"] == "capacity_bonus":
+        st["backpack"]["capacity"] = int(st["backpack"]["capacity"]) + TALENTS[body.talent_id]["bonus"]
+    run.state = st
+    db.commit()
+    return {"state": run.state}
 
 
 @router.post("/run/{run_id}/abandon")

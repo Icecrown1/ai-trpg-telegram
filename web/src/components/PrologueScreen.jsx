@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import SceneArt from './SceneArt.jsx'
 
 /* Скриптованный пролог: старый бармен Одо вводит в курс дела.
    Только кнопки, ноль LLM — выверенный текст, мгновенные ответы. */
@@ -70,6 +71,7 @@ export default function PrologueScreen({ busy, onDone }) {
       <div className="panel log-outer">
         <span className="panel-title">Таверна «Последний факел»</span>
         <div className="log-scroll">
+          {step === 0 && <SceneArt tag="tavern" />}
           <div className="log-entry">
             <div className="log-narration">{s.text}</div>
           </div>

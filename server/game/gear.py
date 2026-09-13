@@ -26,4 +26,5 @@ def defense(state: dict) -> int:
     dex = int((state.get("stats") or {}).get("DEX", 10))
     armor = ((state.get("equipment") or {}).get("armor") or {})
     stoneskin = 2 if int((state.get("flags") or {}).get("stone_skin", 0) or 0) > 0 else 0
-    return 10 + (dex - 10) // 2 + int(armor.get("def", 0)) + stoneskin
+    from .talents import defense_bonus
+    return 10 + (dex - 10) // 2 + int(armor.get("def", 0)) + stoneskin + defense_bonus(state.get("talents"))

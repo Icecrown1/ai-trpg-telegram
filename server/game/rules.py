@@ -43,6 +43,7 @@ CLASSES = {
         "start_items": ["Посох из живого дуба", "Мешочек трав", "Костяной амулет"],
         "desc": "Говорит с тем, что растёт и рычит.",
         "spells": ["Опутывание", "Лечение природой", "Звериный облик"],
+        "talents": ["beast_speech"],
     },
 }
 
@@ -62,7 +63,9 @@ def seeker_to_state(seeker, dungeon: dict, name_override=None) -> dict:
     """Собрать боевое состояние из персистентного искателя."""
     c = CLASSES[seeker.cls]
     eq = dict(seeker.equipment or {})
-    pack_bonus = int((eq.get("pack") or {}).get("capacity", 0))
+    from .talents import capacity_bonus
+    talents = list(seeker.talents or [])
+    pack_bonus = int((eq.get("pack") or {}).get("capacity", 0)) + capacity_bonus(talents)
     return {
         "name": name_override or seeker.name,
         "race": seeker.race, "class": seeker.cls,
@@ -76,6 +79,9 @@ def seeker_to_state(seeker, dungeon: dict, name_override=None) -> dict:
         "fate": 1,
         "backpack": {"capacity": 8 + pack_bonus, "res": {}},
         "equipment": eq,
+        "talents": talents,
+        "stat_points": int(seeker.stat_points or 0),
+        "talent_points": int(seeker.talent_points or 0),
         "scene": {"place": dungeon["start_location"],
                   "exits": list(dungeon["start_exits"]), "objects": [], "beings": []},
         "party": [],
@@ -103,6 +109,9 @@ def new_character(name: str, race: str, cls: str, dungeon: dict = None) -> dict:
         "fate": 1,  # очко судьбы: один раз спасает от смерти за забег
         "backpack": {"capacity": BACKPACK_CAPACITY_DEFAULT, "res": {}},
         "equipment": {},
+        "talents": list(c.get("talents", [])),
+        "stat_points": 0,
+        "talent_points": 0,
         "inventory": list(c["start_items"]),
         "spells": list(c.get("spells", [])),
         "location": (dungeon or {}).get("start_location", "Врата подземелья Кар-Морд"),

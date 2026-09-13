@@ -320,3 +320,11 @@ input::placeholder { color: var(--amber-faint); }
 }
 /* контейнеры со скроллом: воздух сверху, чтобы плавающий титул первой панели не резался */
 .log { padding-top: 12px; }
+
+.plus-btn {
+  padding: 0 6px;
+  margin-left: 4px;
+  font-size: 13px;
+  border-color: var(--amber);
+  color: var(--amber);
+}

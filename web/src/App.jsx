@@ -81,6 +81,24 @@ export default function App() {
     finally { setBusy(false) }
   }
 
+  const handleSpendStat = async (stat) => {
+    setBusy(true); setError('')
+    try {
+      const { state } = await api.levelup(run.run_id, stat)
+      setRun((r) => ({ ...r, state }))
+    } catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }
+
+  const handlePickTalent = async (talentId) => {
+    setBusy(true); setError('')
+    try {
+      const { state } = await api.talent(run.run_id, talentId)
+      setRun((r) => ({ ...r, state }))
+    } catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }
+
   const handlePrologueDone = async () => {
     setBusy(true); setError('')
     try {
@@ -184,10 +202,13 @@ export default function App() {
       <GameScreen
         run={run}
         user={user}
+        meta={meta}
         busy={busy}
         error={error}
         onTurn={handleTurn}
         onAbandon={handleAbandon}
+        onSpendStat={handleSpendStat}
+        onPickTalent={handlePickTalent}
       />
     )
   }

@@ -65,6 +65,9 @@ class Seeker(Base):
     status = Column(String(12), default="idle")  # idle | in_run | dead
     equipment = Column(JSON, nullable=False, default=dict)  # {"weapon": {...}, "armor": {...}, "pack": {...}}
     inventory = Column(JSON, nullable=False, default=list)  # найденное в забегах: верёвки, ключи, зелья
+    talents = Column(JSON, nullable=False, default=list)
+    stat_points = Column(Integer, default=0)
+    talent_points = Column(Integer, default=0)
 
 
 class Run(Base):

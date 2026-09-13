@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import SceneArt from './SceneArt.jsx'
 
 const B_ORDER = ['tavern', 'throne', 'forge', 'mage_tower']
 
@@ -12,6 +13,7 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
 
   return (
     <div className="screen">
+      <SceneArt tag="city" />
       <div className="panel">
         <span className="panel-title">Город у врат Кар-Морда</span>
         <div className="stats">

@@ -29,6 +29,9 @@ def apply_delta(state: dict, delta: dict) -> dict:
             state["level"] += 1
             state["max_hp"] += 4
             state["hp"] = state["max_hp"]  # level-up heals — a small mercy
+            state["stat_points"] = int(state.get("stat_points", 0)) + 1
+            if state["level"] % 2 == 0:
+                state["talent_points"] = int(state.get("talent_points", 0)) + 1
 
     for item in delta.get("inventory_add", []) or []:
         if isinstance(item, str) and len(state["inventory"]) < 16:

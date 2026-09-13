@@ -24,7 +24,7 @@ function Roll({ r }) {
   )
 }
 
-export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }) {
+export default function GameScreen({ run, user, meta, busy, error, onTurn, onAbandon, onSpendStat, onPickTalent }) {
   const [text, setText] = useState('')
   const [showInv, setShowInv] = useState(false)
   const [pendingRolls, setPendingRolls] = useState(null)
@@ -74,6 +74,7 @@ export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }
           onClick={() => setShowInv((v) => !v)}
         >
           {showInv ? '▾' : '▸'} персонаж и снаряжение ({s.inventory.length})
+          {(s.stat_points > 0 || s.talent_points > 0) && <b> · ⬆ прокачка!</b>}
         </button>
         {(s.party || []).length > 0 && (
           <div className="inv" style={{ marginTop: 4 }}>
@@ -92,11 +93,41 @@ export default function GameScreen({ run, user, busy, error, onTurn, onAbandon }
                 {s.equipment.armor && <span className="inv-item spell">🛡 {s.equipment.armor.name} (защита +{s.equipment.armor.def}, прочн. {s.equipment.armor.dur})</span>}
               </div>
             )}
+            {s.stat_points > 0 && (
+              <p className="muted" style={{ marginBottom: 4 }}>Свободных очков характеристик: <b>{s.stat_points}</b> — жми ⊕</p>
+            )}
             <div className="char-stats">
               {Object.entries(s.stats || {}).map(([k, v]) => (
-                <span key={k}>{STAT_RU[k] || k} <b>{v}</b> <i>({mod(v)})</i></span>
+                <span key={k}>
+                  {STAT_RU[k] || k} <b>{v}</b> <i>({mod(v)})</i>
+                  {s.stat_points > 0 && (
+                    <button className="plus-btn" disabled={busy} onClick={() => onSpendStat(k)}>⊕</button>
+                  )}
+                </span>
               ))}
             </div>
+            {(s.talents || []).length > 0 && (
+              <div style={{ marginBottom: 6 }}>
+                {s.talents.map((t) => (
+                  <span key={t} className="inv-item spell" title={meta?.talents?.[t]?.desc}>
+                    ✦ {meta?.talents?.[t]?.name || t}
+                  </span>
+                ))}
+              </div>
+            )}
+            {s.talent_points > 0 && (
+              <div className="panel" style={{ marginBottom: 8 }}>
+                <span className="panel-title">Выбор таланта ({s.talent_points})</span>
+                {Object.entries(meta?.talents || {})
+                  .filter(([id]) => !(s.talents || []).includes(id))
+                  .map(([id, t]) => (
+                    <div key={id} style={{ marginBottom: 6 }}>
+                      <button disabled={busy} onClick={() => onPickTalent(id)}>{t.name}</button>
+                      <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>{t.desc}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
             {s.inventory.map((it, i) => <span key={i} className="inv-item">{it}</span>)}
             {s.spells?.length > 0 && (
               <div style={{ marginTop: 4 }}>
