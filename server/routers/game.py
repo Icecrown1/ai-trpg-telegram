@@ -296,7 +296,8 @@ def meta():
             for tid, t in __import__("server.game.talents", fromlist=["TALENTS"]).TALENTS.items()
         },
         "dungeons": [
-            {"id": did, "name": d["name"], "desc": d["desc"], "danger": d["danger"]}
+            {"id": did, "name": d["name"], "desc": d["desc"], "danger": d["danger"],
+             "entry_art": d["entry_art"]}
             for did, d in DUNGEONS.items()
         ],
     }

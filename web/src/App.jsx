@@ -200,7 +200,9 @@ export default function App() {
   } else if (run.status === 'dead') {
     screen = <DeathScreen run={run} onNewRun={() => { setRun(null); setError(''); refreshCity() }} />
   } else if (run.status === 'extracted') {
-    screen = <ExtractScreen run={run} hauled={run.hauled} onNewRun={() => { setRun(null); setError(''); refreshCity() }} />
+    screen = <ExtractScreen run={run} hauled={run.hauled}
+      entryArt={meta?.dungeons?.find((d) => d.id === run.dungeon)?.entry_art}
+      onNewRun={() => { setRun(null); setError(''); refreshCity() }} />
   } else {
     screen = (
       <GameScreen

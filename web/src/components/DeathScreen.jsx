@@ -35,13 +35,13 @@ const RES_RU = {
   ash_essence: 'Пепельная эссенция', soul_shard: 'Осколок души', living_gold: 'Живое золото',
 }
 
-export function ExtractScreen({ run, hauled, onNewRun }) {
+export function ExtractScreen({ run, hauled, entryArt, onNewRun }) {
   const s = run.state
   const items = Object.entries(hauled || {})
   return (
     <div className="screen">
       <div className="death">
-        <SceneArt tag="gates" />
+        <SceneArt tag={entryArt || 'gates'} />
         <h1 style={{ color: 'var(--amber)' }}>ТЫ ВЫБРАЛСЯ</h1>
         <div className="panel" style={{ width: '100%' }}>
           <span className="panel-title">Добыча уехала в город</span>
