@@ -377,3 +377,13 @@ input::placeholder { color: var(--amber-faint); }
   min-height: auto;
   max-height: none;
 }
+
+.actions-toggle {
+  align-self: flex-start;
+  border: none;
+  padding: 4px 2px;
+  font-size: 13px;
+  color: var(--amber-dim);
+  background: none;
+}
+.actions-toggle:active { color: var(--amber); }

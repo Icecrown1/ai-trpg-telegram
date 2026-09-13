@@ -25,14 +25,18 @@ function Roll({ r }) {
 }
 
 export default function GameScreen({ run, user, meta, busy, error, onTurn, onAbandon, onSpendStat, onPickTalent }) {
+  const depthLabel = meta?.dungeons?.find((d) => d.id === run.dungeon)?.depth_label || 'ЯРУС' 
   const [text, setText] = useState('')
   const [showInv, setShowInv] = useState(false)
   const [pendingRolls, setPendingRolls] = useState(null)
+  const [showActions, setShowActions] = useState(false)
   const logRef = useRef(null)
   const s = run.state
   const log = run.log || []
   const lastActions = log.length ? log[log.length - 1].suggested_actions || [] : []
   const hpPct = Math.round((s.hp / s.max_hp) * 100)
+
+  useEffect(() => { setShowActions(false) }, [log.length])
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
@@ -63,7 +67,7 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
           <span className={hpPct <= 25 ? 'low' : ''}>HP <b>{s.hp}/{s.max_hp}</b></span>
           <span>ЗОЛ <b>{s.gold}</b></span>
           <span>XP <b>{s.xp}</b></span>
-          <span>ЯРУС <b>{s.depth}</b></span>
+          <span>{depthLabel} <b>{s.depth}</b></span>
           {s.fate > 0 && <span title="Очко судьбы: спасёт от смерти один раз">СУДЬБА <b>◆</b></span>}
           {s.backpack && <span>РЮКЗАК <b>{Object.values(s.backpack.res || {}).reduce((a, b) => a + b, 0)}/{s.backpack.capacity}</b></span>}
           <span className="muted">ходы: {user.turns_left}</span>
@@ -158,11 +162,19 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
         </div>
       </div>
 
-      <div className="actions">
-        {lastActions.map((a, i) => (
-          <button key={i} disabled={busy} onClick={() => submit(a)}>{a}</button>
-        ))}
-      </div>
+      {lastActions.length > 0 && (
+        <button className="actions-toggle" onClick={() => setShowActions((v) => !v)}>
+          {showActions ? '▾' : '▸'} варианты действий ({lastActions.length})
+        </button>
+      )}
+      {showActions && (
+        <div className="actions">
+          {lastActions.map((a, i) => (
+            <button key={i} disabled={busy}
+              onClick={() => { setShowActions(false); submit(a) }}>{a}</button>
+          ))}
+        </div>
+      )}
 
       <div className="input-row">
         <input

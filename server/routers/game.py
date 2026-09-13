@@ -155,26 +155,19 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
     if ss > 0:
         new_state["flags"]["stone_skin"] = ss - 1
 
-    _ART_TAGS = {
-        # общие
-        "gates","stairs","skull","goblin","rat","undead","cultist","merchant",
-        "chest","altar","potion","well","torch","boss",
-        "spider","ghost","door","key","campfire","bones",
-        # Кар-Морд
-        "forge_dungeon","gold_vein","lift","cavein","flooded_hall","priest",
-        # Прелый Лес
-        "forest","wolf","rootwalker","witch_hut","swamp_lights","hanging_oak","pastor",
-        # Обитель
-        "scriptorium","bell","cage","stitched","candles","archimandrite",
-    }
+    _COMMON_TAGS = {"stairs","skull","goblin","rat","undead","cultist","merchant",
+                    "chest","altar","potion","well","torch","boss",
+                    "spider","ghost","door","key","campfire","bones"}
+    _dungeon_tags = set(get_dungeon(run.dungeon or DEFAULT_DUNGEON).get("art_tags") or [])
     art = result.get("scene_art")
-    art = art if art in _ART_TAGS else None
+    # жёсткое правило «свой/чужой»: чужая метка данжа глушится сервером
+    art = art if art in (_COMMON_TAGS | _dungeon_tags) else None
     if art:
         # не повторять арт, который уже был в последних 8 ходах
         recent_art = {
             t[0] for t in db.query(Turn.scene_art)
             .filter(Turn.run_id == run.id, Turn.scene_art != None)  # noqa: E711
-            .order_by(Turn.id.desc()).limit(8).all()
+            .order_by(Turn.id.desc()).limit(4).all()
         }
         if art in recent_art:
             art = None
@@ -297,7 +290,7 @@ def meta():
         },
         "dungeons": [
             {"id": did, "name": d["name"], "desc": d["desc"], "danger": d["danger"],
-             "entry_art": d["entry_art"]}
+             "entry_art": d["entry_art"], "depth_label": d.get("depth_label", "ЯРУС")}
             for did, d in DUNGEONS.items()
         ],
     }
