@@ -328,3 +328,35 @@ input::placeholder { color: var(--amber-faint); }
   border-color: var(--amber);
   color: var(--amber);
 }
+
+/* --- Экран запуска --- */
+.title-screen {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.title-art { width: 100%; }
+.title-art .scene-img { width: min(100%, 460px); }
+.game-title {
+  font-size: 34px;
+  letter-spacing: 0.35em;
+  margin: 4px 0 0 0.35em; /* компенсация трекинга */
+  color: var(--amber);
+  text-shadow: 0 0 18px rgba(255, 176, 0, 0.55), 0 0 40px rgba(255, 176, 0, 0.25);
+}
+.tagline {
+  color: var(--amber-dim);
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  margin: 0 0 18px;
+}
+.press-key {
+  color: var(--amber-dim);
+  font-size: 14px;
+  letter-spacing: 0.1em;
+}
+.press-key.blink { color: var(--amber); animation: pressBlink 1.4s steps(2) infinite; }
+@keyframes pressBlink { 50% { opacity: 0.25; } }

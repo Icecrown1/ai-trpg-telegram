@@ -3,6 +3,7 @@ import { api, haptic } from './api.js'
 import CharacterCreate from './components/CharacterCreate.jsx'
 import CityScreen from './components/CityScreen.jsx'
 import PrologueScreen from './components/PrologueScreen.jsx'
+import TitleScreen from './components/TitleScreen.jsx'
 import GameScreen from './components/GameScreen.jsx'
 import DeathScreen, { ExtractScreen } from './components/DeathScreen.jsx'
 
@@ -12,6 +13,7 @@ export default function App() {
   const [city, setCity] = useState(null)
   const [creating, setCreating] = useState(false)
   const [dungeon, setDungeon] = useState('kar_mord')
+  const [entered, setEntered] = useState(false)
   const [run, setRun] = useState(null) // { run_id, status, state, turn_count, log }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -176,7 +178,9 @@ export default function App() {
   }
 
   let screen
-  if (!run && !creating && city && !(city.flags || {}).prologue_done) {
+  if (!entered) {
+    screen = <TitleScreen ready={!!(meta && user && city)} onEnter={() => setEntered(true)} />
+  } else if (!run && !creating && city && !(city.flags || {}).prologue_done) {
     screen = <PrologueScreen busy={busy} onDone={handlePrologueDone} />
   } else if (!run && !creating) {
     screen = city ? (
