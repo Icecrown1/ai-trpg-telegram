@@ -157,7 +157,7 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
 
     _COMMON_TAGS = {"stairs","skull","goblin","rat","undead","cultist","merchant",
                     "chest","altar","potion","well","torch","boss",
-                    "spider","ghost","door","key","campfire","bones"}
+                    "spider","ghost","door","key","campfire","bones","letter"}
     _dungeon_tags = set(get_dungeon(run.dungeon or DEFAULT_DUNGEON).get("art_tags") or [])
     art = result.get("scene_art")
     # жёсткое правило «свой/чужой»: чужая метка данжа глушится сервером
