@@ -17,7 +17,7 @@ from ..game import rules
 
 router = APIRouter(prefix="/api/city", tags=["city"])
 
-DEFAULT_BUILDINGS = {"tavern": 1, "forge": 0, "mage_tower": 0, "throne": 0}
+DEFAULT_BUILDINGS = {"tavern": 0, "forge": 0, "mage_tower": 0, "throne": 0}
 
 # лица, которые могут сидеть в таверне (генерируются детерминированно от city.id + total_runs)
 _PATRON_POOL = [
@@ -388,6 +388,15 @@ def prologue_done(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
     city = get_or_create_city(db, user)
+    first_time = not (city.flags or {}).get("prologue_done")
     city.flags = {**(city.flags or {}), "prologue_done": True}
+    # разбор домов из пролога: таверна отстроена, остатки материалов на складе
+    if (city.buildings or {}).get("tavern", 0) < 1:
+        city.buildings = {**(city.buildings or {}), "tavern": 1}
+    if first_time:
+        cres = dict(city.resources or {})
+        cres["wood"] = cres.get("wood", 0) + 2
+        cres["stone"] = cres.get("stone", 0) + 2
+        city.resources = cres
     db.commit()
     return city_payload(db, city, user)
