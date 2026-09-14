@@ -10,7 +10,7 @@ export default function SceneArt({ tag }) {
     return (
       <img
         className="scene-img"
-        src={`/art/${tag}.png`}
+        src={`/art/${tag}.webp`}
         alt=""
         onError={() => setImgFailed(true)}
       />
