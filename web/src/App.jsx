@@ -15,6 +15,7 @@ export default function App() {
   const [dungeon, setDungeon] = useState('kar_mord')
   const [entered, setEntered] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [tutorialDone, setTutorialDone] = useState(false)  // акт 1 пройден -> город
   const [run, setRun] = useState(null) // { run_id, status, state, turn_count, log }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -103,11 +104,18 @@ export default function App() {
     finally { setBusy(false) }
   }
 
+  const handleDemolish = async (ruinId) => {
+    setBusy(true); setError('')
+    try { setCity(await api.demolish(ruinId)) }
+    catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }
+
   const handleAdmin = async (what) => {
     setBusy(true); setError('')
     try {
       await api.adminReset(what)
-      if (what === 'reset_account') { setRun(null) }
+      if (what === 'reset_account' || what === 'reset_prologue') { setRun(null); setTutorialDone(false) }
       const [me, c] = await Promise.all([api.me(), api.city()])
       setUser(me.user); setCity(c); if (!me.run) setRun(null)
     } catch (e) { setError(e.message) }
@@ -190,11 +198,25 @@ export default function App() {
     )
   }
 
+  const prologueActive = city && !(city.flags || {}).prologue_done
+  const tavernBuilt = city && (city.buildings || {}).tavern >= 1
+  const ruinsTouched = city && ((city.ruins || []).some((r) => r.cleared))
+  const inTutorial = prologueActive && (tutorialDone || ruinsTouched) && !tavernBuilt
+
   let screen
   if (!entered) {
     screen = <TitleScreen ready={!!(meta && user && city)} onEnter={() => setEntered(true)} />
-  } else if (!run && !creating && city && !(city.flags || {}).prologue_done) {
-    screen = <PrologueScreen busy={busy} onDone={handlePrologueDone} />
+  } else if (!run && !creating && prologueActive && !tutorialDone && !ruinsTouched && !tavernBuilt) {
+    screen = <PrologueScreen busy={busy} part={1} onDone={() => setTutorialDone(true)} />
+  } else if (!run && !creating && inTutorial) {
+    screen = (
+      <CityScreen city={city} user={user} dungeons={meta?.dungeons} busy={busy} error={error}
+        tutorial onDemolish={handleDemolish} onBuild={handleBuild}
+        onSend={() => {}} onNewSeeker={() => {}} onHire={() => {}} onCraft={() => {}}
+        onEnchant={() => {}} onDaily={() => {}} isAdmin={false} onAdmin={() => {}} />
+    )
+  } else if (!run && !creating && prologueActive && tavernBuilt) {
+    screen = <PrologueScreen busy={busy} part={2} onDone={handlePrologueDone} />
   } else if (!run && !creating) {
     screen = city ? (
       <CityScreen city={city} user={user} dungeons={meta?.dungeons} busy={busy} error={error}

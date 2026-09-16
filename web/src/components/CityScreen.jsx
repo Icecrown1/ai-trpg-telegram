@@ -3,8 +3,17 @@ import SceneArt from './SceneArt.jsx'
 
 const B_ORDER = ['tavern', 'throne', 'forge', 'mage_tower']
 
-export default function CityScreen({ city, user, dungeons, busy, error, onSend, onNewSeeker, onBuild, onHire, onCraft, onEnchant, onDaily, isAdmin, onAdmin }) {
+export default function CityScreen({ city, user, dungeons, busy, error, onSend, onNewSeeker, onBuild, onHire, onCraft, onEnchant, onDaily, isAdmin, onAdmin, tutorial, onDemolish }) {
   const [tab, setTab] = useState('city')
+  const ruins = city.ruins || []
+  const ruinsLeft = ruins.filter((r) => !r.cleared).length
+  const tavernReady = (city.upgrades || {}).tavern && !(city.upgrades || {}).tavern.locked &&
+    Object.entries((city.upgrades || {}).tavern?.cost || {}).every(([rid, c]) => (city.resources || {})[rid] >= c)
+  const hint = !tutorial ? null
+    : ruinsLeft === 2 ? '«Видишь дома через дорогу? Разбирай», — Одо кивает на руины.'
+    : ruinsLeft === 1 ? 'Материалы легли на склад. Одо: «Второй дом сам себя не разберёт».'
+    : tavernReady ? 'Всё нужное — на складе. Одо: «Теперь строй. Кнопка у таверны, наследник».'
+    : 'Одо оглядывает штабеля: «Хорошая работа».' 
   const [craftFor, setCraftFor] = useState(null)
   const [dungeon, setDungeon] = useState((dungeons && dungeons[0]?.id) || 'kar_mord')
   const [enchantFor, setEnchantFor] = useState(null)
@@ -25,9 +34,18 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
         </div>
       </div>
 
+      {tutorial && (
+        <div className="panel" style={{ borderStyle: 'dotted' }}>
+          <span className="panel-title">Одо</span>
+          <p className="muted" style={{ margin: 0 }}>{hint}</p>
+        </div>
+      )}
+
       <div className="actions">
         <button className={tab === 'city' ? 'primary' : ''} onClick={() => setTab('city')}>Здания</button>
-        <button className={tab === 'tavern' ? 'primary' : ''} onClick={() => setTab('tavern')}>Таверна</button>
+        {!tutorial && (
+          <button className={tab === 'tavern' ? 'primary' : ''} onClick={() => setTab('tavern')}>Таверна</button>
+        )}
         {(city.buildings || {}).forge > 0 && (
           <button className={tab === 'forge' ? 'primary' : ''} onClick={() => setTab('forge')}>Кузница</button>
         )}
@@ -41,7 +59,19 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
 
       {tab === 'city' && (
         <div className="log" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {B_ORDER.map((bid) => {
+          {ruins.map((r) => (
+            <div className="panel" key={r.id} style={{ opacity: r.cleared ? 0.45 : 1 }}>
+              <span className="panel-title">{r.name}</span>
+              <p className="muted">{r.cleared ? 'Разобран до основания.' : r.desc}</p>
+              {!r.cleared && (
+                <div>
+                  <p className="muted">Материалы: {Object.entries(r.loot_named).map(([n, c]) => `${n} × ${c}`).join(', ')}</p>
+                  <button className="primary" disabled={busy} onClick={() => onDemolish(r.id)}>▸ Разобрать</button>
+                </div>
+              )}
+            </div>
+          ))}
+          {(tutorial ? ['tavern'] : B_ORDER).map((bid) => {
             const lvl = (city.buildings || {})[bid] || 0
             const up = (city.upgrades || {})[bid]
             return (
@@ -188,7 +218,7 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
         </div>
       )}
 
-      {isAdmin && (
+      {isAdmin && !tutorial && (
         <div className="panel" style={{ borderStyle: 'dotted' }}>
           <span className="panel-title">⚙ Админка (тест)</span>
           <div className="actions">
@@ -202,6 +232,7 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
         </div>
       )}
 
+      {!tutorial && (
       <div className="panel">
         <span className="panel-title">В подземелье</span>
         <div className="actions" style={{ marginBottom: 8 }}>
@@ -234,6 +265,7 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
           <p className="muted">Свободных искателей нет.</p>
         )}
       </div>
+      )}
     </div>
   )
 }

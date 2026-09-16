@@ -60,6 +60,14 @@ def tavern_patrons(city: City, user: User) -> list:
     return out
 
 
+RUINS = [
+    {"id": 1, "name": "Разрушенный дом у колодца", "loot": {"wood": 2, "stone": 1},
+     "desc": "Крыша провалилась, но брёвна живые."},
+    {"id": 2, "name": "Разрушенный дом с обгоревшей стеной", "loot": {"wood": 1, "stone": 2},
+     "desc": "Кладка крепкая — камень пойдёт в дело."},
+]
+
+
 def city_payload(db: Session, city: City, user: User) -> dict:
     seekers = (
         db.query(Seeker)
@@ -129,7 +137,15 @@ def city_payload(db: Session, city: City, user: User) -> dict:
          "available": forge_lvl >= g["forge"]}
         for gid, g in GEAR.items()
     ] if forge_lvl > 0 else []
+    cleared = set((city.flags or {}).get("ruins_cleared") or [])
+    ruins = None
+    if not (city.flags or {}).get("prologue_done"):
+        ruins = [
+            {**r, "loot_named": res_brief(r["loot"]), "cleared": r["id"] in cleared}
+            for r in RUINS
+        ]
     return {
+        "ruins": ruins,
         "runs_left": runs_left, "runs_per_window": RUNS_PER_WINDOW,
         "run_window_hours": window_h, "next_run_in": next_in,
         "daily": daily,
@@ -388,15 +404,36 @@ def prologue_done(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
     city = get_or_create_city(db, user)
-    first_time = not (city.flags or {}).get("prologue_done")
     city.flags = {**(city.flags or {}), "prologue_done": True}
-    # разбор домов из пролога: таверна отстроена, остатки материалов на складе
+    # фолбэк для «пропустить пролог»: город должен остаться играбельным
     if (city.buildings or {}).get("tavern", 0) < 1:
         city.buildings = {**(city.buildings or {}), "tavern": 1}
-    if first_time:
-        cres = dict(city.resources or {})
-        cres["wood"] = cres.get("wood", 0) + 2
-        cres["stone"] = cres.get("stone", 0) + 2
-        city.resources = cres
+    db.commit()
+    return city_payload(db, city, user)
+
+
+class DemolishIn(BaseModel):
+    ruin_id: int
+
+
+@router.post("/demolish")
+def demolish(body: DemolishIn, tg=Depends(get_tg_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.tg_id == tg["id"]).first()
+    if not user:
+        raise HTTPException(404, "Сначала зайди в игру")
+    city = get_or_create_city(db, user)
+    if (city.flags or {}).get("prologue_done"):
+        raise HTTPException(409, "Руины давно разобраны")
+    ruin = next((r for r in RUINS if r["id"] == body.ruin_id), None)
+    if not ruin:
+        raise HTTPException(422, "Такого дома нет")
+    cleared = list((city.flags or {}).get("ruins_cleared") or [])
+    if body.ruin_id in cleared:
+        raise HTTPException(409, "Этот дом уже разобран")
+    cres = dict(city.resources or {})
+    for rid, cnt in ruin["loot"].items():
+        cres[rid] = cres.get(rid, 0) + cnt
+    city.resources = cres
+    city.flags = {**(city.flags or {}), "ruins_cleared": cleared + [body.ruin_id]}
     db.commit()
     return city_payload(db, city, user)

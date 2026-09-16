@@ -4,6 +4,8 @@ BUILDING_DEFS = {
     "tavern": {
         "name": "Таверна",
         "levels": {
+            1: {"cost": {"wood": 3, "stone": 3}, "gold": 0,
+                "desc": "Крыша, свет в окнах, эль: путники потянутся"},
             2: {"cost": {"wood": 8, "stone": 4}, "gold": 40,
                 "requires_flag": "barman_dead",
                 "desc": "+1 стол соратников, новые лица"},
