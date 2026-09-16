@@ -39,13 +39,17 @@ def reset_cooldown(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
 
 @router.post("/reset_prologue")
 def reset_prologue(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
+    """Полный повтор пролога: сцены + туториал. Возвращает руины и таверну-развалину."""
     _require_admin(tg)
     user = _user(db, tg)
     city = db.query(City).filter(City.user_id == user.id).first()
     if city:
         flags = dict(city.flags or {})
         flags.pop("prologue_done", None)
+        flags.pop("ruins_cleared", None)
         city.flags = flags
+        # таверна снова руина, чтобы туториал прошёлся целиком
+        city.buildings = {**(city.buildings or {}), "tavern": 0}
         db.commit()
     return {"ok": True}
 
