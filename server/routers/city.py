@@ -181,10 +181,15 @@ def city_payload(db: Session, city: City, user: User) -> dict:
 def get_city(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.tg_id == tg["id"]).first()
     if not user:
+        from sqlalchemy.exc import IntegrityError
         user = User(tg_id=tg["id"], username=tg.get("username"), first_name=tg.get("first_name"))
         db.add(user)
-        db.commit()
-        db.refresh(user)
+        try:
+            db.commit()
+            db.refresh(user)
+        except IntegrityError:
+            db.rollback()
+            user = db.query(User).filter(User.tg_id == tg["id"]).first()
     city = get_or_create_city(db, user)
     payload = city_payload(db, city, user)
     payload["tavern_patrons"] = tavern_patrons(city, user)
@@ -405,10 +410,15 @@ def daily_claim(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
 def prologue_done(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.tg_id == tg["id"]).first()
     if not user:
+        from sqlalchemy.exc import IntegrityError
         user = User(tg_id=tg["id"], username=tg.get("username"), first_name=tg.get("first_name"))
         db.add(user)
-        db.commit()
-        db.refresh(user)
+        try:
+            db.commit()
+            db.refresh(user)
+        except IntegrityError:
+            db.rollback()
+            user = db.query(User).filter(User.tg_id == tg["id"]).first()
     city = get_or_create_city(db, user)
     city.flags = {**(city.flags or {}), "prologue_done": True}
     # фолбэк для «пропустить пролог»: город должен остаться играбельным
