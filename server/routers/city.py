@@ -31,13 +31,19 @@ _PATRON_POOL = [
 
 
 def get_or_create_city(db: Session, user: User) -> City:
+    from sqlalchemy.exc import IntegrityError
     city = db.query(City).filter(City.user_id == user.id).first()
     if not city:
         city = City(user_id=user.id, buildings=dict(DEFAULT_BUILDINGS),
                     resources={}, gold=0, companions=[], flags={})
         db.add(city)
-        db.commit()
-        db.refresh(city)
+        try:
+            db.commit()
+            db.refresh(city)
+        except IntegrityError:
+            # гонка первого входа: параллельный запрос успел создать город — берём его
+            db.rollback()
+            city = db.query(City).filter(City.user_id == user.id).first()
     if city.companions is None:
         city.companions = []
     if city.flags is None:

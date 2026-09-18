@@ -43,12 +43,17 @@ SERVER_VERSION = _server_version()
 # ---------- helpers ----------
 
 def _get_or_create_user(db: Session, tg: dict) -> User:
+    from sqlalchemy.exc import IntegrityError
     user = db.query(User).filter(User.tg_id == tg["id"]).first()
     if not user:
         user = User(tg_id=tg["id"], username=tg.get("username"), first_name=tg.get("first_name"))
         db.add(user)
-        db.commit()
-        db.refresh(user)
+        try:
+            db.commit()
+            db.refresh(user)
+        except IntegrityError:
+            db.rollback()
+            user = db.query(User).filter(User.tg_id == tg["id"]).first()
     return user
 
 
