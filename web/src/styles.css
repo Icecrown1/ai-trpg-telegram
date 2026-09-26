@@ -387,3 +387,10 @@ input::placeholder { color: var(--amber-faint); }
   background: none;
 }
 .actions-toggle:active { color: var(--amber); }
+
+.inv-item.artifact {
+  border-color: var(--amber);
+  color: var(--amber);
+  text-shadow: 0 0 6px rgba(255, 176, 0, 0.6);
+  cursor: pointer;
+}

@@ -16,6 +16,7 @@ from .dungeons import get_dungeon, DEFAULT_DUNGEON
 from .resources import res_brief, backpack_load
 from .gear import defense
 from .talents import TALENTS, stat_check_bonus, attack_bonus as talent_attack_bonus
+from .artifacts import ARTIFACTS as _ART, owned as _owned_art
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -146,6 +147,26 @@ def _exec_roll(args: dict, state: dict) -> dict:
                   modifier=stat_mod + situational + weapon_mod + adv_bonus,
                   reason=reason, dc=dc)
 
+    from .artifacts import owned as _owned
+    have = _owned(state)
+    # Эхо-раковина: раз за забег перебрасывает первый проваленный бросок игрока
+    if ("echo_shell" in have and kind in ("check", "player_attack") and sides == 20
+            and result.get("success") is False
+            and not (state.get("flags") or {}).get("echo_used")):
+        first = result["rolls"][0]
+        result = roll(sides=sides, count=count,
+                      modifier=stat_mod + situational + weapon_mod + adv_bonus,
+                      reason=f"{reason} [эхо-раковина: переброс, было {first}]", dc=dc)
+        result["echo_reroll"] = True
+        state.setdefault("flags", {})["echo_used"] = True  # сохранится с состоянием хода
+
+    # Клык из глубин: при попадании сервер сам бросает огненный 1d4
+    if "depth_fang" in have and kind == "player_attack" and result.get("success"):
+        import secrets as _s2
+        fire = _s2.randbelow(4) + 1
+        result["fire_bonus"] = fire
+        result["reason"] = f"{result['reason']} [клык: +{fire} огнём к урону]"
+
     # Криты: сервер помечает, мастер обязан отыграть
     if kind == "player_attack" and sides == 20 and result.get("count", 1) == 1:
         natural = result["rolls"][0]
@@ -178,6 +199,10 @@ def _state_brief(state: dict) -> str:
             "таланты": [
                 {"название": TALENTS[t]["name"], "суть": TALENTS[t]["desc"]}
                 for t in state.get("talents", []) if t in TALENTS
+            ],
+            "артефакты": [
+                {"название": _ART[a]["name"], "правило": _ART[a]["rule"]}
+                for a in sorted(_owned_art(state))
             ],
             "локация": state["location"], "ярус": state["depth"],
             "сцена": state.get("scene", {}),

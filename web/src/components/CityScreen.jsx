@@ -224,6 +224,7 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
           <div className="actions">
             <button disabled={busy} onClick={() => onAdmin('reset_cooldown')}>Сбросить КД попыток</button>
             <button disabled={busy} onClick={() => onAdmin('reset_prologue')}>Пролог заново</button>
+            <button disabled={busy} onClick={() => onAdmin('grant_artifact')}>◈ Артефакт искателям</button>
             <button disabled={busy} style={{ borderColor: 'var(--red, #f66)' }}
               onClick={() => window.confirm('Снести город, искателей и все забеги?') && onAdmin('reset_account')}>
               Полный сброс

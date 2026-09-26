@@ -114,7 +114,8 @@ export default function App() {
   const handleAdmin = async (what) => {
     setBusy(true); setError('')
     try {
-      await api.adminReset(what)
+      const r = await api.adminReset(what)
+      if (r && r.given) window.alert(r.given.length ? r.given.join('\n') : 'Нет свободных искателей без полного набора')
       if (what === 'reset_account' || what === 'reset_prologue') { setRun(null); setTutorialDone(false) }
       const [me, c] = await Promise.all([api.me(), api.city()])
       setUser(me.user); setCity(c); if (!me.run) setRun(null)

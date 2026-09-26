@@ -125,8 +125,11 @@ def _run_payload(run: Run, last: dict | None = None) -> dict:
 def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> dict:
     # deepcopy обязателен: изменение только вложенных структур (рюкзак/сцена/инвентарь)
     # при shallow-копии не считалось изменением атрибута и не попадало в базу
+    from ..game import artifacts as art
     level_before = int(run.state.get("level", 1))
-    new_state = state_mod.apply_delta(copy.deepcopy(run.state), result.get("state_delta") or {})
+    delta = art.adjust_delta(run.state, result.get("state_delta") or {})
+    new_state = state_mod.apply_delta(copy.deepcopy(run.state), delta)
+    new_state = art.apply_transitions(run.state, new_state)
     if new_state.get("level", 1) > level_before:
         note = f"\n\n⬆ УРОВЕНЬ {new_state['level']}! Раны затягиваются. +1 очко характеристик"
         if new_state["level"] % 2 == 0:
@@ -287,6 +290,8 @@ def meta():
     return {
         "races": {k: v["name"] for k, v in rules.RACES.items()},
         "race_desc": {k: v.get("desc", "") for k, v in rules.RACES.items()},
+        "artifacts": {a["name"]: a["desc"] for a in
+                      __import__("server.game.artifacts", fromlist=["ARTIFACTS"]).ARTIFACTS.values()},
         "classes": {k: {"name": v["name"], "desc": v["desc"]} for k, v in rules.CLASSES.items()},
         "free_turns_per_day": FREE_TURNS_PER_DAY,
         "server_version": SERVER_VERSION,

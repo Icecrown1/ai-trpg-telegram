@@ -132,7 +132,13 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
                   ))}
               </div>
             )}
-            {s.inventory.map((it, i) => <span key={i} className="inv-item">{it}</span>)}
+            {s.inventory.map((it, i) => {
+              const artDesc = meta?.artifacts?.[it]
+              return artDesc
+                ? <span key={i} className="inv-item artifact" title={artDesc}
+                    onClick={() => window.alert(`◈ ${it}\n\n${artDesc}`)}>◈ {it}</span>
+                : <span key={i} className="inv-item">{it}</span>
+            })}
             {s.spells?.length > 0 && (
               <div style={{ marginTop: 4 }}>
                 {s.spells.map((sp, i) => <span key={i} className="inv-item spell">✦ {sp}</span>)}

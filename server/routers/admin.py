@@ -71,3 +71,25 @@ def reset_account(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
     user.best_gold = 0
     db.commit()
     return {"ok": True}
+
+
+@router.post("/grant_artifact")
+def grant_artifact(tg=Depends(get_tg_user), db: Session = Depends(get_db)):
+    """Тест: каждому свободному искателю — случайный артефакт, которого у него ещё нет."""
+    import secrets
+    from ..game.artifacts import ARTIFACTS, STONE_HEART_HP
+    _require_admin(tg)
+    user = _user(db, tg)
+    given = []
+    for s in db.query(Seeker).filter(Seeker.user_id == user.id, Seeker.status == "idle").all():
+        inv = list(s.inventory or [])
+        pool = [a for a in ARTIFACTS.values() if a["name"] not in inv]
+        if not pool:
+            continue
+        a = pool[secrets.randbelow(len(pool))]
+        s.inventory = inv + [a["name"]]
+        if a["name"] == ARTIFACTS["stone_heart"]["name"]:
+            s.max_hp = int(s.max_hp or 0) + STONE_HEART_HP
+        given.append(f"{s.name}: {a['name']}")
+    db.commit()
+    return {"ok": True, "given": given}

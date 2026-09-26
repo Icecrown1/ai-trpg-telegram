@@ -78,7 +78,9 @@ def seeker_to_state(seeker, dungeon: dict, name_override=None) -> dict:
     eq = dict(seeker.equipment or {})
     from .talents import capacity_bonus
     talents = list(seeker.talents or [])
-    pack_bonus = int((eq.get("pack") or {}).get("capacity", 0)) + capacity_bonus(talents)
+    from .artifacts import capacity_penalty
+    pack_bonus = (int((eq.get("pack") or {}).get("capacity", 0)) + capacity_bonus(talents)
+                  - capacity_penalty(seeker.inventory))
     return {
         "name": name_override or seeker.name,
         "race": seeker.race, "class": seeker.cls,
