@@ -55,9 +55,15 @@ CLASSES = {
 }
 
 RACES = {
-    "human":   {"name": "Человек", "mods": {}},
-    "elf":     {"name": "Эльф", "mods": {"DEX": 1, "CON": -1}},
-    "dwarf":   {"name": "Дварф", "mods": {"CON": 1, "CHA": -1}},
+    "human": {"name": "Человек", "mods": {"STR": 1}, "hp_bonus": 0,
+              "desc": "+1 СИЛ · свои среди людей: город и Обитель",
+              "affinity": "monastery"},
+    "elf":   {"name": "Эльф", "mods": {"DEX": 2}, "hp_bonus": 0,
+              "desc": "+2 ЛОВ · лес узнаёт своего",
+              "affinity": "forest"},
+    "dwarf": {"name": "Дварф", "mods": {"CON": 1}, "hp_bonus": 3,
+              "desc": "+1 ВЫН, +3 HP · камень Кар-Морда помнит его род",
+              "affinity": "kar_mord"},
 }
 
 
@@ -105,7 +111,7 @@ def new_character(name: str, race: str, cls: str, dungeon: dict = None) -> dict:
     stats = {stat: rolls[i] for i, stat in enumerate(priority)}
     for s, m in RACES[race]["mods"].items():
         stats[s] = max(3, min(18, stats[s] + m))
-    max_hp = c["hit_die"] + max(0, mod(stats["CON"]))
+    max_hp = c["hit_die"] + max(0, mod(stats["CON"])) + int(RACES[race].get("hp_bonus", 0))
     return {
         "name": name[:24] or "Безымянный",
         "race": race,

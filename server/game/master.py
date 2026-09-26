@@ -72,6 +72,12 @@ ROLL_DICE_TOOL = {
             },
             "modifier": {"type": "integer", "description": "ТОЛЬКО ситуативный бонус/штраф от -3 до +3 "
                                "(подходящий предмет, выгодная позиция). Не дублируй характеристику."},
+            "targets": {"type": "integer", "description": "Для player_attack по нескольким целям: сколько "
+                               "врагов накрывает удар (1-3). Сервер сам поднимет СЛ за каждую цель сверх первой."},
+            "advantage_die": {"type": "integer", "enum": [3, 6],
+                              "description": "РЕАЛЬНОЕ преимущество (засада, подготовленная позиция, "
+                               "слабость врага использована): сервер бросит дополнительный d3 или d6 и "
+                               "прибавит к результату. Не для смутных заявок."},
             "reason": {"type": "string", "description": "Что проверяется, по-русски, коротко"},
             "dc": {
                 "type": "integer",
@@ -88,7 +94,9 @@ _STAT_RU = {"STR": "СИЛ", "DEX": "ЛОВ", "CON": "ВЫН", "INT": "ИНТ", 
 
 def _exec_roll(args: dict, state: dict) -> dict:
     """Выполнение броска: модификатор характеристики берётся из листа персонажа,
-    модель может добавить лишь ситуативные ±3."""
+    модель может добавить лишь ситуативные ±3. Сервер сам считает: цели (СЛ+3 за
+    каждую сверх первой), преимущество (доп. кубик d3/d6), криты 16-20 и мгновенное
+    убийство (чистая 20 против СЛ 20)."""
     sides = args.get("sides", 20)
     count = args.get("count", 1)
     dc = args.get("dc")
@@ -109,6 +117,7 @@ def _exec_roll(args: dict, state: dict) -> dict:
 
     kind = args.get("kind") or "check"
     weapon_mod = 0
+    targets = 1
     if kind == "enemy_attack":
         dc = defense(state)  # СЛ атак по игроку диктует сервер: броня работает всегда
     elif kind == "player_attack":
@@ -116,11 +125,38 @@ def _exec_roll(args: dict, state: dict) -> dict:
         weapon_mod = int(weapon.get("atk", 0)) + talent_attack_bonus(state.get("talents"))
         if weapon_mod:
             reason = f"{reason} [{weapon.get('name', 'оружие')} +{weapon_mod}]"
+        try:
+            targets = max(1, min(3, int(args.get("targets", 1) or 1)))
+        except (TypeError, ValueError):
+            targets = 1
+        if targets > 1 and dc is not None:
+            dc = int(dc) + 3 * (targets - 1)  # размашистый удар: одна проверка, СЛ выше
+            reason = f"{reason} [по {targets} целям, СЛ +{3 * (targets - 1)}]"
     elif kind == "damage":
         dc = None
 
-    return roll(sides=sides, count=count, modifier=stat_mod + situational + weapon_mod,
-                reason=reason, dc=dc)
+    adv_bonus = 0
+    adv_die = args.get("advantage_die")
+    if adv_die in (3, 6) and kind != "damage":
+        import secrets as _s
+        adv_bonus = _s.randbelow(int(adv_die)) + 1
+        reason = f"{reason} [преимущество 1d{adv_die}: +{adv_bonus}]"
+
+    result = roll(sides=sides, count=count,
+                  modifier=stat_mod + situational + weapon_mod + adv_bonus,
+                  reason=reason, dc=dc)
+
+    # Криты: сервер помечает, мастер обязан отыграть
+    if kind == "player_attack" and sides == 20 and result.get("count", 1) == 1:
+        natural = result["rolls"][0]
+        hit = result.get("success", result.get("dc") is None)
+        if natural == 20 and result.get("dc") is not None and int(result["dc"]) >= 20 and hit:
+            result["instant_kill"] = True
+        elif natural >= 16 and hit:
+            result["crit"] = True
+    if targets > 1:
+        result["targets"] = targets
+    return result
 
 
 def _system_blocks(dungeon_id: str) -> list:

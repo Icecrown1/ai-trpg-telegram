@@ -55,6 +55,7 @@ export default function CharacterCreate({ meta, user, busy, error, onCreate, onB
               onClick={() => setRace(key)}
             >
               {label}
+              {meta.race_desc?.[key] && <small>{meta.race_desc[key]}</small>}
             </button>
           ))}
         </div>

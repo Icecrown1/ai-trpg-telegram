@@ -286,6 +286,7 @@ class TurnIn(BaseModel):
 def meta():
     return {
         "races": {k: v["name"] for k, v in rules.RACES.items()},
+        "race_desc": {k: v.get("desc", "") for k, v in rules.RACES.items()},
         "classes": {k: {"name": v["name"], "desc": v["desc"]} for k, v in rules.CLASSES.items()},
         "free_turns_per_day": FREE_TURNS_PER_DAY,
         "server_version": SERVER_VERSION,
