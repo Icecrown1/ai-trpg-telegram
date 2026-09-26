@@ -2,6 +2,21 @@
 The backend clamps everything — the model can propose, not dictate."""
 
 
+def _norm(name: str) -> str:
+    return " ".join(str(name).lower().replace("ё", "е").split())
+
+
+def dedupe_items(items: list) -> list:
+    """Убирает повторы предметов (без учёта регистра и лишних пробелов), порядок сохраняется."""
+    seen, out = set(), []
+    for i in items or []:
+        k = _norm(i)
+        if k and k not in seen:
+            seen.add(k)
+            out.append(i)
+    return out
+
+
 def apply_delta(state: dict, delta: dict) -> dict:
     if not isinstance(delta, dict):
         return state
@@ -33,9 +48,16 @@ def apply_delta(state: dict, delta: dict) -> dict:
             if state["level"] % 2 == 0:
                 state["talent_points"] = int(state.get("talent_points", 0)) + 1
 
+    # инвентарь без дублей: одна вещь — одна строка (мастер любит «находить» уже имеющееся)
+    state["inventory"] = dedupe_items(state.get("inventory") or [])
+    have = {_norm(i) for i in state["inventory"]}
     for item in delta.get("inventory_add", []) or []:
-        if isinstance(item, str) and len(state["inventory"]) < 16:
-            state["inventory"].append(item[:40])
+        if isinstance(item, str) and item.strip() and len(state["inventory"]) < 16:
+            name = item.strip()[:40]
+            if _norm(name) in have:
+                continue
+            state["inventory"].append(name)
+            have.add(_norm(name))
 
     for item in delta.get("inventory_remove", []) or []:
         if item in state["inventory"]:

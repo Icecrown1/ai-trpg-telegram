@@ -94,7 +94,7 @@ def _finish_seeker(db: Session, run: Run, died: bool, final_state: dict):
         s.max_hp = final_state.get("max_hp", s.max_hp)
         s.runs_survived += 1
         s.equipment = final_state.get("equipment", s.equipment) or {}  # износ/поломки сохраняются
-        s.inventory = final_state.get("inventory", s.inventory) or []   # найденное остаётся при нём
+        s.inventory = state_mod.dedupe_items(final_state.get("inventory", s.inventory) or [])  # без дублей
         s.stats = final_state.get("stats", s.stats)
         s.talents = final_state.get("talents", s.talents) or []
         s.stat_points = int(final_state.get("stat_points", 0))

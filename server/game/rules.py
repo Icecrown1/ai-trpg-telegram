@@ -72,6 +72,11 @@ def mod(score: int) -> int:
     return (score - 10) // 2
 
 
+def _dedupe(items):
+    from .state import dedupe_items
+    return dedupe_items(list(items or []))
+
+
 def seeker_to_state(seeker, dungeon: dict, name_override=None) -> dict:
     """Собрать боевое состояние из персистентного искателя."""
     c = CLASSES[seeker.cls]
@@ -88,7 +93,7 @@ def seeker_to_state(seeker, dungeon: dict, name_override=None) -> dict:
         "stats": dict(seeker.stats),
         "hp": seeker.max_hp, "max_hp": seeker.max_hp,
         "gold": 30,
-        "inventory": list(seeker.inventory) if seeker.inventory else list(c["start_items"]),
+        "inventory": _dedupe(seeker.inventory) if seeker.inventory else list(c["start_items"]),
         "spells": list(c.get("spells", [])),
         "location": dungeon["start_location"], "depth": 1, "flags": {},
         "fate": 1,
