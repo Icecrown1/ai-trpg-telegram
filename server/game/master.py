@@ -74,6 +74,8 @@ ROLL_DICE_TOOL = {
             },
             "modifier": {"type": "integer", "description": "ТОЛЬКО ситуативный бонус/штраф от -3 до +3 "
                                "(подходящий предмет, выгодная позиция). Не дублируй характеристику."},
+            "modifier_reason": {"type": "string", "description": "Если modifier не 0 — коротко за что, "
+                               "2-4 слова: «клин и рычаг», «скользкий пол». Игрок видит это рядом с броском."},
             "targets": {"type": "integer", "description": "Для player_attack по нескольким целям: сколько "
                                "врагов накрывает удар (1-3). Сервер сам поднимет СЛ за каждую цель сверх первой."},
             "target": {"type": "string", "description": "Для player_attack: id существа из бестиария, "
@@ -119,7 +121,12 @@ def _exec_roll(args: dict, state: dict) -> dict:
     if stat in _STAT_RU:
         score = int((state.get("stats") or {}).get(stat, 10))
         stat_mod = (score - 10) // 2 + stat_check_bonus(state.get("talents"), stat)
-        reason = f"{reason} ({_STAT_RU[stat]})" if reason else f"Проверка {_STAT_RU[stat]}"
+        label = f"{_STAT_RU[stat]} {stat_mod:+d}"
+        reason = f"{reason} ({label})" if reason else f"Проверка {label}"
+    if situational:
+        # ситуативный бонус мастера показываем отдельно: игрок видит, откуда каждая единица
+        why = str(args.get("modifier_reason") or "обстановка").strip()[:40]
+        reason = f"{reason} [{why} {situational:+d}]"
 
     kind = args.get("kind") or "check"
     weapon_mod = 0
