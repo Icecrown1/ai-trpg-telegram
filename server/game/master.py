@@ -17,6 +17,7 @@ from .resources import res_brief, backpack_load
 from .gear import defense
 from .talents import TALENTS, stat_check_bonus, attack_bonus as talent_attack_bonus
 from .artifacts import ARTIFACTS as _ART, owned as _owned_art
+from . import bestiary as _bestiary
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -75,6 +76,10 @@ ROLL_DICE_TOOL = {
                                "(подходящий предмет, выгодная позиция). Не дублируй характеристику."},
             "targets": {"type": "integer", "description": "Для player_attack по нескольким целям: сколько "
                                "врагов накрывает удар (1-3). Сервер сам поднимет СЛ за каждую цель сверх первой."},
+            "target": {"type": "string", "description": "Для player_attack: id существа из бестиария, "
+                       "по которому бьёт игрок (при ударе по нескольким — самое защищённое). Сервер сам поставит КД."},
+            "attacker": {"type": "string", "description": "Для enemy_attack: id атакующего существа из бестиария. "
+                         "Сервер сам добавит его бонус атаки."},
             "advantage_die": {"type": "integer", "enum": [3, 6],
                               "description": "РЕАЛЬНОЕ преимущество (засада, подготовленная позиция, "
                                "слабость врага использована): сервер бросит дополнительный d3 или d6 и "
@@ -121,7 +126,16 @@ def _exec_roll(args: dict, state: dict) -> dict:
     targets = 1
     if kind == "enemy_attack":
         dc = defense(state)  # СЛ атак по игроку диктует сервер: броня работает всегда
+        stat_mod = 0          # характеристики игрока не помогают врагу попасть
+        foe = _bestiary.get(args.get("attacker"))
+        if foe:
+            weapon_mod = int(foe["atk"])  # бонус атаки существа из бестиария
+            reason = f"{reason} [{foe['name']}, атака +{foe['atk']}]"
     elif kind == "player_attack":
+        foe = _bestiary.get(args.get("target"))
+        if foe:
+            dc = int(foe["ac"]) + _bestiary.depth_bonus(state.get("depth", 1), foe)
+            reason = f"{reason} [{foe['name']}, КД {dc}]"
         weapon = (state.get("equipment") or {}).get("weapon") or {}
         weapon_mod = int(weapon.get("atk", 0)) + talent_attack_bonus(state.get("talents"))
         if weapon_mod:
@@ -181,7 +195,7 @@ def _exec_roll(args: dict, state: dict) -> dict:
 
 
 def _system_blocks(dungeon_id: str) -> list:
-    bible = get_dungeon(dungeon_id)["bible"]
+    bible = get_dungeon(dungeon_id)["bible"] + "\n\n" + _bestiary.prompt_block(dungeon_id)
     return [
         {"type": "text", "text": SYSTEM_PROMPT},
         {"type": "text", "text": bible, "cache_control": {"type": "ephemeral"}},
@@ -343,7 +357,8 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
         intro.append(f"[СВОДКА ПРОШЛЫХ СОБЫТИЙ]\n{summary}")
     intro.append(f"[СОСТОЯНИЕ ПЕРСОНАЖА]\n{_state_brief(state)}")
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + get_dungeon(dungeon_id)["bible"]},
+        {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + get_dungeon(dungeon_id)["bible"]
+                                      + "\n\n" + _bestiary.prompt_block(dungeon_id)},
         {"role": "user", "content": "\n\n".join(intro)},
         {"role": "assistant", "content": "Принято. Жду действий игрока."},
     ]
