@@ -556,12 +556,21 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str,
     for _ in range(8):  # tool-use loop, hard-capped
         resp = _create(
             model=GM_MODEL,
-            max_tokens=MAX_TOKENS_TURN,
+            # модели с размышлениями тратят бюджет до ответа; платим только за написанное
+            max_tokens=max(MAX_TOKENS_TURN, 6000),
             system=_system_blocks(dungeon_id),
             tools=[ROLL_DICE_TOOL, FINISH_TURN_TOOL],
             messages=messages,
         )
         between = "".join(b.text for b in resp.content if b.type == "text").strip()
+
+        if resp.stop_reason == "max_tokens":
+            # ответ оборван на середине — оборванный вызов в историю не кладём, просим заново и короче
+            print("[GM MAX_TOKENS] ход оборван по длине, повтор", file=sys.stderr)
+            messages.append({"role": "user", "content":
+                "[ОБРЫВ] Твой прошлый ответ оборвался по длине. Сдай ход заново одним вызовом "
+                "finish_turn: narration не длиннее 3 абзацев, броски уже сделаны — используй их итог."})
+            continue
 
         finish = next((b for b in resp.content if b.type == "tool_use" and b.name == "finish_turn"), None)
         if finish is not None:
@@ -575,7 +584,8 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str,
             parsed["narration"] = narration or "…Тьма молчит. Попробуй ещё раз."
             if _needs_repair(parsed["narration"]):
                 parsed["narration"] = _repair_anthropic(parsed["narration"])
-            if not [a for a in (parsed.get("suggested_actions") or []) if str(a).strip()]:
+            if (not [a for a in (parsed.get("suggested_actions") or []) if str(a).strip()]
+                    and not parsed["narration"].startswith("…Тьма")):
                 parsed["suggested_actions"] = _buttons_from_scene(parsed["narration"])
             parsed.setdefault("suggested_actions", [])
             parsed.setdefault("state_delta", {})
