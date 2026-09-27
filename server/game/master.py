@@ -385,7 +385,9 @@ def _proofread(narration: str) -> str:
 
 
 # Страж языка для Claude: латиница (кроме кубиков и КД) и CJK-иероглифы в русском тексте
-_FOREIGN = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]|\b(?!(?:\d*d\d+|КД|HP|XP)\b)[A-Za-z]{2,}\b")
+_FOREIGN = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]"
+                      r"|[A-Za-z][А-Яа-яЁё]|[А-Яа-яЁё][A-Za-z]"
+                      r"|\b(?!(?:\d*d\d+|КД|HP|XP)\b)[A-Za-z]{2,}\b")
 REPAIR_MODEL = "claude-haiku-4-5"
 
 
