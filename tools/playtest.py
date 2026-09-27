@@ -4,7 +4,8 @@
     python tools/playtest.py                       # 1 забег в Кар-Морд, до 25 ходов
     python tools/playtest.py --dungeon all         # по забегу в каждый данж
     python tools/playtest.py --dungeon forest --turns 40 --class druid --race elf
-    python tools/playtest.py --player llm          # игрок — нейросеть (gpt-5-mini / haiku), играет как человек
+    python tools/playtest.py --player llm          # игрок — нейросеть (gpt-6-luna / haiku), играет как человек
+    OPENAI_MODEL=gpt-6-sol python tools/playtest.py --player llm   # сменить модель мастера только для теста
 
 В протоколе есть раздел «Экономика»: токены и $ по каждой модели, отдельно мастер,
 корректор, страховка кнопок и игрок-бот; средняя цена хода и прогноз на забег.
@@ -41,6 +42,10 @@ import server.game.master as master  # noqa: E402
 
 # $ за 1М токенов: (вход, вход из кэша, выход, запись в кэш). Проверяй актуальность на сайтах вендоров.
 PRICES = {
+    # OpenAI, developers.openai.com/api/docs/pricing (сентябрь 2026)
+    "gpt-6-astra": (10, 1.0, 50, 0), "gpt-6-sol": (2, 0.2, 10, 0), "gpt-6-luna": (0.10, 0.01, 0.50, 0),
+    "gpt-5.6-sol": (4, 0.4, 20, 0), "gpt-5.6-terra": (2, 0.2, 12, 0), "gpt-5.6-luna": (0.20, 0.02, 1.20, 0),
+    # старые модели — прежние цены, в текущем прайсе их нет, сверить
     "gpt-5": (1.25, 0.125, 10.0, 0), "gpt-5-mini": (0.25, 0.025, 2.0, 0), "gpt-5-nano": (0.05, 0.005, 0.4, 0),
     "claude-sonnet-5": (2, 0.2, 10, 2.5), "claude-opus-5-5": (4, 0.4, 20, 5), "claude-haiku-4-5": (1, 0.1, 5, 1.25),
 }
@@ -118,8 +123,9 @@ def llm_pick(state, last_narr, suggestions, turn, max_turns):
     user = (f"{brief}\nТвои прошлые заявки: {recent}\n\nСЦЕНА:\n{last_narr[-2500:]}\n\n"
             f"Кнопки: {' | '.join(suggestions) or 'нет'}\n\nТвоя заявка:")
     if os.getenv("OPENAI_API_KEY"):
-        model = "gpt-5-mini"
-        r = _orig_oa(model=model, max_completion_tokens=1500, reasoning_effort="low",
+        model = os.getenv("PLAYER_MODEL", "gpt-6-luna")
+        kw = {"reasoning_effort": "low"} if model.startswith(("gpt-5", "o")) and not model.startswith("gpt-5.6") else {}
+        r = _orig_oa(model=model, max_completion_tokens=1500, **kw,
                      messages=[{"role": "system", "content": PLAYER_PROMPT}, {"role": "user", "content": user}])
         u = r.usage
         cached = getattr(getattr(u, "prompt_tokens_details", None), "cached_tokens", 0) or 0

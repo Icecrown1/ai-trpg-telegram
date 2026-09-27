@@ -1,6 +1,7 @@
 """The AI game master: Claude with an honest server-side dice tool,
 prompt caching and a rolling summary of older turns."""
 import json
+import os
 import re
 import sys
 import time
@@ -33,6 +34,11 @@ def _openai_client():
     return _openai
 
 _TRANSIENT = (429, 500, 502, 503, 529)
+
+
+def _takes_reasoning(model: str) -> bool:
+    """reasoning_effort передаём только моделям, где он точно поддерживается (gpt-5, gpt-5-mini/nano, o-серия)."""
+    return bool(re.match(r"^(gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?|o\d)", model or "")) and "." not in model
 
 
 def _create(**kwargs):
@@ -372,7 +378,7 @@ def _proofread(narration: str) -> str:
             messages=[{"role": "system", "content": _PROOFREAD_PROMPT},
                       {"role": "user", "content": narration}],
         )
-        if GM_MODEL.startswith(("gpt-5", "o1", "o3", "o4")):
+        if _takes_reasoning(GM_MODEL):
             kwargs["reasoning_effort"] = "minimal"
         resp = _openai_create(**kwargs)
         fixed = (resp.choices[0].message.content or "").strip()
@@ -421,8 +427,10 @@ def _buttons_from_scene(narration: str) -> list:
     """Мастер забыл кнопки — дешёвая модель достраивает 3-4 действия по тексту сцены."""
     try:
         if GM_PROVIDER == "openai":
+            small = os.getenv("OPENAI_SMALL_MODEL", "gpt-6-luna")
+            extra = {"reasoning_effort": "minimal"} if small.startswith("gpt-5") and not small.startswith("gpt-5.6") else {}
             resp = _openai_create(
-                model="gpt-5-mini", max_completion_tokens=600, reasoning_effort="minimal",
+                model=small, max_completion_tokens=600, **extra,
                 messages=[{"role": "system", "content": _BUTTONS_PROMPT},
                           {"role": "user", "content": narration[-1500:]}])
             text = resp.choices[0].message.content or ""
@@ -491,7 +499,7 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
             tools=[OPENAI_TOOL],
             messages=messages,
         )
-        if GM_MODEL.startswith(("gpt-5", "o1", "o3", "o4")):
+        if _takes_reasoning(GM_MODEL):
             kwargs["reasoning_effort"] = OPENAI_REASONING
         resp = _openai_create(**kwargs)
         msg = resp.choices[0].message
