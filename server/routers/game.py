@@ -207,7 +207,12 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
         for rid, cnt in hauled.items():
             cres[rid] = cres.get(rid, 0) + int(cnt)
         city.resources = cres
-        city.gold = (city.gold or 0) + int(new_state.get("gold", 0))
+        # в казну — только добытое: дорожные монеты выдаются на каждый забег и не копятся
+        start_gold = int(new_state.get("start_gold", 30))
+        profit = max(0, int(new_state.get("gold", 0)) - start_gold)
+        city.gold = (city.gold or 0) + profit
+        result["narration"] = (result.get("narration", "").rstrip() +
+            f"\n\n💰 В казну: +{profit} зол." + (f" (дорожные {start_gold} не в счёт)" if start_gold else ""))
         # выжившие соратники возвращаются в таверну с +1 преданности
         back = []
         for m in new_state.get("party", []):
@@ -295,6 +300,8 @@ def meta():
         "artifacts": {a["name"]: a["desc"] for a in
                       __import__("server.game.artifacts", fromlist=["ARTIFACTS"]).ARTIFACTS.values()},
         "classes": {k: {"name": v["name"], "desc": v["desc"]} for k, v in rules.CLASSES.items()},
+        "resources": {k: v["name"] for k, v in
+                      __import__("server.game.resources", fromlist=["RESOURCES"]).RESOURCES.items()},
         "free_turns_per_day": FREE_TURNS_PER_DAY,
         "server_version": SERVER_VERSION,
         "talents": {
@@ -491,6 +498,73 @@ def pick_talent(run_id: int, body: TalentIn, tg=Depends(get_tg_user), db: Sessio
     st["talent_points"] = int(st["talent_points"]) - 1
     if TALENTS[body.talent_id]["kind"] == "capacity_bonus":
         st["backpack"]["capacity"] = int(st["backpack"]["capacity"]) + TALENTS[body.talent_id]["bonus"]
+    run.state = st
+    db.commit()
+    return {"state": run.state}
+
+
+class PackIn(BaseModel):
+    action: str             # drop | take
+    res: str | None = None  # id ресурса
+    item: str | None = None # или предмет инвентаря
+
+
+@router.post("/run/{run_id}/pack")
+def pack(run_id: int, body: PackIn, tg=Depends(get_tg_user), db: Session = Depends(get_db)):
+    """Разбор рюкзака без хода мастера: выбросить на пол текущего места или подобрать обратно.
+    Пол помнит только текущее место — ушёл дальше, брошенное осталось там."""
+    from ..game.resources import RESOURCES, backpack_load
+    user = _get_or_create_user(db, tg)
+    run = db.query(Run).filter(Run.id == run_id, Run.user_id == user.id, Run.status == "active").first()
+    if not run:
+        raise HTTPException(404, "Активный забег не найден")
+    st = copy.deepcopy(run.state)
+    place = (st.get("scene") or {}).get("place") or st.get("location")
+    floor = st.get("floor") or {}
+    if floor.get("place") != place:
+        floor = {"place": place, "res": {}, "items": []}
+    bp = st.setdefault("backpack", {"capacity": 8, "res": {}})
+    inv = st.setdefault("inventory", [])
+    if body.action == "drop":
+        if body.res:
+            if int(bp["res"].get(body.res, 0)) <= 0:
+                raise HTTPException(409, "Этого нет в рюкзаке")
+            bp["res"][body.res] -= 1
+            if bp["res"][body.res] <= 0:
+                del bp["res"][body.res]
+            floor["res"][body.res] = int(floor["res"].get(body.res, 0)) + 1
+        elif body.item:
+            if body.item not in inv:
+                raise HTTPException(409, "Этого нет при тебе")
+            inv.remove(body.item)
+            floor["items"].append(body.item)
+        else:
+            raise HTTPException(422, "Что выбросить?")
+    elif body.action == "take":
+        if body.res:
+            if int(floor["res"].get(body.res, 0)) <= 0:
+                raise HTTPException(409, "Здесь этого нет")
+            if backpack_load(bp["res"]) >= int(bp.get("capacity", 8)):
+                raise HTTPException(409, "Рюкзак полон — сначала выброси что-нибудь")
+            if body.res not in RESOURCES:
+                raise HTTPException(422, "Неизвестный ресурс")
+            floor["res"][body.res] -= 1
+            if floor["res"][body.res] <= 0:
+                del floor["res"][body.res]
+            bp["res"][body.res] = int(bp["res"].get(body.res, 0)) + 1
+        elif body.item:
+            if body.item not in floor["items"]:
+                raise HTTPException(409, "Здесь этого нет")
+            if len(inv) >= 16:
+                raise HTTPException(409, "Руки заняты — больше не унести")
+            floor["items"].remove(body.item)
+            inv.append(body.item)
+        else:
+            raise HTTPException(422, "Что подобрать?")
+    else:
+        raise HTTPException(422, "Неизвестное действие")
+    st["floor"] = floor
+    st["inventory"] = state_mod.dedupe_items(inv)
     run.state = st
     db.commit()
     return {"state": run.state}

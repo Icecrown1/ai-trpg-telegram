@@ -92,7 +92,7 @@ def seeker_to_state(seeker, dungeon: dict, name_override=None) -> dict:
         "level": seeker.level, "xp": seeker.xp,
         "stats": dict(seeker.stats),
         "hp": seeker.max_hp, "max_hp": seeker.max_hp,
-        "gold": 30,
+        "gold": 30, "start_gold": 30,  # дорожные: в казну при выходе не идут
         "inventory": _dedupe(seeker.inventory) if seeker.inventory else list(c["start_items"]),
         "spells": list(c.get("spells", [])),
         "location": dungeon["start_location"], "depth": 1, "flags": {},
@@ -128,7 +128,7 @@ def new_character(name: str, race: str, cls: str, dungeon: dict = None) -> dict:
         "stats": stats,
         "hp": max_hp,
         "max_hp": max_hp,
-        "gold": 30,
+        "gold": 30, "start_gold": 30,  # дорожные: в казну при выходе не идут
         "fate": 1,  # очко судьбы: один раз спасает от смерти за забег
         "backpack": {"capacity": BACKPACK_CAPACITY_DEFAULT, "res": {}},
         "equipment": {},

@@ -95,6 +95,15 @@ export default function App() {
     finally { setBusy(false) }
   }
 
+  const handlePack = async (body) => {
+    setBusy(true); setError('')
+    try {
+      const { state } = await api.pack(run.run_id, body)
+      setRun((r) => ({ ...r, state }))
+    } catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }
+
   const handlePickTalent = async (talentId) => {
     setBusy(true); setError('')
     try {
@@ -252,6 +261,7 @@ export default function App() {
         onAbandon={handleAbandon}
         onSpendStat={handleSpendStat}
         onPickTalent={handlePickTalent}
+        onPack={handlePack}
       />
     )
   }

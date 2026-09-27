@@ -24,17 +24,25 @@ function Roll({ r }) {
   )
 }
 
-export default function GameScreen({ run, user, meta, busy, error, onTurn, onAbandon, onSpendStat, onPickTalent }) {
+export default function GameScreen({ run, user, meta, busy, error, onTurn, onAbandon, onSpendStat, onPickTalent, onPack }) {
   const depthLabel = meta?.dungeons?.find((d) => d.id === run.dungeon)?.depth_label || 'ЯРУС' 
   const [text, setText] = useState('')
   const [showInv, setShowInv] = useState(false)
   const [pendingRolls, setPendingRolls] = useState(null)
   const [showActions, setShowActions] = useState(false)
+  const [showPack, setShowPack] = useState(false)
   const logRef = useRef(null)
   const s = run.state
   const log = run.log || []
   const lastActions = log.length ? log[log.length - 1].suggested_actions || [] : []
   const hpPct = Math.round((s.hp / s.max_hp) * 100)
+  const resName = (id) => meta?.resources?.[id] || id
+  const packRes = Object.entries(s.backpack?.res || {}).filter(([, n]) => n > 0)
+  const packLoad = packRes.reduce((a, [, n]) => a + n, 0)
+  const here = s.scene?.place || s.location
+  const floor = s.floor && s.floor.place === here ? s.floor : null
+  const floorRes = Object.entries(floor?.res || {}).filter(([, n]) => n > 0)
+  const floorItems = floor?.items || []
 
   useEffect(() => { setShowActions(false) }, [log.length])
 
@@ -69,10 +77,46 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
           <span title="Опыт до следующего уровня">ОПЫТ <b>{s.xp}/{s.level * 100}</b></span>
           <span>{depthLabel} <b>{s.depth}</b></span>
           {s.fate > 0 && <span title="Очко судьбы: спасёт от смерти один раз">СУДЬБА <b>◆</b></span>}
-          {s.backpack && <span>РЮКЗАК <b>{Object.values(s.backpack.res || {}).reduce((a, b) => a + b, 0)}/{s.backpack.capacity}</b></span>}
+          {s.backpack && (
+            <span className="pack-toggle" onClick={() => setShowPack((v) => !v)} title="Открыть рюкзак">
+              РЮКЗАК <b>{packLoad}/{s.backpack.capacity}</b> {showPack ? '▾' : '▸'}
+            </span>
+          )}
           {user.turns_left <= 50 && <span className="muted">ходов на сегодня: {user.turns_left}</span>}
         </div>
         <div className="hp-bar"><i style={{ width: `${hpPct}%` }} /></div>
+        {showPack && (
+          <div className="pack">
+            {packRes.length === 0 && <p className="muted">Рюкзак пуст.</p>}
+            {packRes.map(([id, n]) => (
+              <div className="pack-row" key={id}>
+                <span>{resName(id)} ×{n}</span>
+                <button disabled={busy} onClick={() => onPack({ action: 'drop', res: id })}>выбросить 1</button>
+              </div>
+            ))}
+            {(floorRes.length > 0 || floorItems.length > 0) && (
+              <>
+                <p className="muted" style={{ margin: '6px 0 2px' }}>На полу здесь:</p>
+                {floorRes.map(([id, n]) => (
+                  <div className="pack-row" key={'f' + id}>
+                    <span>{resName(id)} ×{n}</span>
+                    <button disabled={busy || packLoad >= s.backpack.capacity}
+                      onClick={() => onPack({ action: 'take', res: id })}>подобрать</button>
+                  </div>
+                ))}
+                {floorItems.map((it, i) => (
+                  <div className="pack-row" key={'fi' + i}>
+                    <span>{it}</span>
+                    <button disabled={busy} onClick={() => onPack({ action: 'take', item: it })}>подобрать</button>
+                  </div>
+                ))}
+              </>
+            )}
+            <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+              Брошенное остаётся на этом месте. Уйдёшь дальше — не вернёшь.
+            </p>
+          </div>
+        )}
         <button
           className="inv-toggle"
           onClick={() => setShowInv((v) => !v)}
@@ -137,7 +181,8 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
               return artDesc
                 ? <span key={i} className="inv-item artifact" title={artDesc}
                     onClick={() => window.alert(`◈ ${it}\n\n${artDesc}`)}>◈ {it}</span>
-                : <span key={i} className="inv-item">{it}</span>
+                : <span key={i} className="inv-item" onClick={() => !busy &&
+                    window.confirm(`Выбросить «${it}» на пол?`) && onPack({ action: 'drop', item: it })}>{it}</span>
             })}
             {s.spells?.length > 0 && (
               <div style={{ marginTop: 4 }}>

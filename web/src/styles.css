@@ -394,3 +394,8 @@ input::placeholder { color: var(--amber-faint); }
   text-shadow: 0 0 6px rgba(255, 176, 0, 0.6);
   cursor: pointer;
 }
+
+.pack-toggle { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.pack { margin-top: 6px; border-top: 1px dashed var(--amber-faint); padding-top: 6px; }
+.pack-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 3px 0; font-size: 13px; }
+.pack-row button { padding: 2px 8px; font-size: 12px; }

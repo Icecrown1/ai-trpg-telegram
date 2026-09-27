@@ -273,6 +273,15 @@ def _system_blocks(dungeon_id: str) -> list:
     ]
 
 
+def _floor_brief(state: dict):
+    """Что игрок сам выложил на пол текущего места — мастер должен это видеть (можно подобрать)."""
+    f = state.get("floor") or {}
+    here = (state.get("scene") or {}).get("place") or state.get("location")
+    if f.get("place") != here or not (f.get("res") or f.get("items")):
+        return None
+    return {"ресурсы": res_brief(f.get("res")), "вещи": f.get("items") or []}
+
+
 def _state_brief(state: dict) -> str:
     return json.dumps(
         {
@@ -307,6 +316,7 @@ def _state_brief(state: dict) -> str:
                 "ресурсы": res_brief((state.get("backpack") or {}).get("res")),
             },
             "флаги": state.get("flags", {}),
+            "брошено_здесь": _floor_brief(state),
         },
         ensure_ascii=False,
     )
