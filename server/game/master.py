@@ -279,7 +279,8 @@ def _extract_json(text: str) -> dict:
     """Модель обязана вернуть голый JSON, но страхуемся от любого мусора вокруг:
     сканируем все '{' и берём ПОСЛЕДНИЙ валидный объект с ключом narration."""
     stripped = re.sub(r"```(?:json)?", "", text)
-    decoder = json.JSONDecoder()
+    # strict=False: модели (Sonnet 5) пишут абзацы с настоящими переносами внутри строк
+    decoder = json.JSONDecoder(strict=False)
     found = None
     for i, ch in enumerate(stripped):
         if ch != "{":
