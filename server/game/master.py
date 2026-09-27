@@ -413,16 +413,25 @@ def _repair_anthropic(narration: str) -> str:
     return narration
 
 
+_BUTTONS_PROMPT = ("По сцене текстовой RPG предложи игроку 4 разных действия. Каждое — законченная фраза "
+                   "с глаголом, до 32 символов, по-русски. Ответ — только 4 строки, без нумерации.")
+
+
 def _buttons_from_scene(narration: str) -> list:
     """Мастер забыл кнопки — дешёвая модель достраивает 3-4 действия по тексту сцены."""
     try:
-        resp = _create(
-            model=REPAIR_MODEL, max_tokens=200,
-            system=("По сцене текстовой RPG предложи игроку 4 разных действия. Каждое — законченная фраза "
-                    "с глаголом, до 32 символов, по-русски. Ответ — только 4 строки, без нумерации."),
-            messages=[{"role": "user", "content": narration[-1500:]}],
-        )
-        text = "".join(b.text for b in resp.content if b.type == "text")
+        if GM_PROVIDER == "openai":
+            resp = _openai_create(
+                model="gpt-5-mini", max_completion_tokens=600, reasoning_effort="minimal",
+                messages=[{"role": "system", "content": _BUTTONS_PROMPT},
+                          {"role": "user", "content": narration[-1500:]}])
+            text = resp.choices[0].message.content or ""
+        else:
+            resp = _create(
+                model=REPAIR_MODEL, max_tokens=200, system=_BUTTONS_PROMPT,
+                messages=[{"role": "user", "content": narration[-1500:]}],
+            )
+            text = "".join(b.text for b in resp.content if b.type == "text")
         acts = [re.sub(r"^[\s\-•\d.)]+", "", l).strip() for l in text.splitlines()]
         return [a[:40] for a in acts if a][:4]
     except Exception as e:
@@ -533,9 +542,11 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
         parsed.setdefault("game_over", False)
         parsed.setdefault("death_cause", None)
         parsed.setdefault("extracted", False)
-        parsed["rolls"] = all_rolls
+        parsed["rolls"] = _visible_rolls(all_rolls)
         if GM_PROOFREAD:
             parsed["narration"] = _proofread(str(parsed["narration"]))
+        if not [a for a in (parsed.get("suggested_actions") or []) if str(a).strip()]:
+            parsed["suggested_actions"] = _buttons_from_scene(parsed["narration"])
         return parsed
 
     return {"narration": "Подземелье замерло в нерешительности. Повтори действие.",

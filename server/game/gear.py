@@ -21,10 +21,18 @@ GEAR = {
 }
 
 
+# стартовая экипировка классов (лежит в инвентаре) защищает, пока не выкована лучшая
+STARTER_ARMOR = {"Кольчуга": 1, "Латный нагрудник": 2}
+STARTER_SHIELD = 1
+
+
 def defense(state: dict) -> int:
     """Защита игрока: 10 + мод ЛОВ + броня. Единственный источник истины."""
     dex = int((state.get("stats") or {}).get("DEX", 10))
     armor = ((state.get("equipment") or {}).get("armor") or {})
+    inv = state.get("inventory") or []
+    armor_def = int(armor.get("def", 0)) if armor else max([STARTER_ARMOR.get(i, 0) for i in inv] or [0])
+    shield = STARTER_SHIELD if "Щит" in inv else 0
     stoneskin = 2 if int((state.get("flags") or {}).get("stone_skin", 0) or 0) > 0 else 0
     from .talents import defense_bonus
-    return 10 + (dex - 10) // 2 + int(armor.get("def", 0)) + stoneskin + defense_bonus(state.get("talents"))
+    return 10 + (dex - 10) // 2 + armor_def + shield + stoneskin + defense_bonus(state.get("talents"))

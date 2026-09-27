@@ -4,6 +4,10 @@
     python tools/playtest.py                       # 1 забег в Кар-Морд, до 25 ходов
     python tools/playtest.py --dungeon all         # по забегу в каждый данж
     python tools/playtest.py --dungeon forest --turns 40 --class druid --race elf
+    python tools/playtest.py --player llm          # игрок — нейросеть (gpt-5-mini / haiku), играет как человек
+
+В протоколе есть раздел «Экономика»: токены и $ по каждой модели, отдельно мастер,
+корректор, страховка кнопок и игрок-бот; средняя цена хода и прогноз на забег.
 
 Игра идёт в ОТДЕЛЬНОЙ базе playtest.db — прод-данные и лимиты игроков не трогаются.
 Итог: файл playtest_<время>.md в корне проекта — его и присылай на разбор.
@@ -33,6 +37,101 @@ if DB_FILE.exists():
 from fastapi.testclient import TestClient  # noqa: E402
 from server.main import app  # noqa: E402
 from server.game.resources import material_of, RESOURCES  # noqa: E402
+import server.game.master as master  # noqa: E402
+
+# $ за 1М токенов: (вход, вход из кэша, выход, запись в кэш). Проверяй актуальность на сайтах вендоров.
+PRICES = {
+    "gpt-5": (1.25, 0.125, 10.0, 0), "gpt-5-mini": (0.25, 0.025, 2.0, 0), "gpt-5-nano": (0.05, 0.005, 0.4, 0),
+    "claude-sonnet-5": (2, 0.2, 10, 2.5), "claude-opus-5-5": (4, 0.4, 20, 5), "claude-haiku-4-5": (1, 0.1, 5, 1.25),
+}
+LEDGER = {}  # (роль, модель) -> {calls, in, cached, out, cache_w, usd}
+
+
+def _price(model):
+    for k in sorted(PRICES, key=len, reverse=True):
+        if model.startswith(k):
+            return PRICES[k]
+    return (0, 0, 0, 0)
+
+
+def _book(role, model, inp, cached, out, cache_w=0):
+    pi, pc, po, pw = _price(model)
+    e = LEDGER.setdefault((role, model), {"calls": 0, "in": 0, "cached": 0, "out": 0, "cache_w": 0, "usd": 0.0})
+    e["calls"] += 1; e["in"] += inp; e["cached"] += cached; e["out"] += out; e["cache_w"] += cache_w
+    e["usd"] += (inp * pi + cached * pc + out * po + cache_w * pw) / 1e6
+
+
+def _role_openai(kw):
+    sys_msg = str((kw.get("messages") or [{}])[0].get("content", ""))
+    if sys_msg.startswith("Ты — корректор"):
+        return "корректор"
+    if sys_msg.startswith("По сцене текстовой RPG"):
+        return "кнопки"
+    return "мастер"
+
+
+_orig_oa = master._openai_create
+
+
+def _spy_oa(**kw):
+    r = _orig_oa(**kw)
+    u = r.usage
+    cached = getattr(getattr(u, "prompt_tokens_details", None), "cached_tokens", 0) or 0
+    _book(_role_openai(kw), kw.get("model", "?"), u.prompt_tokens - cached, cached, u.completion_tokens)
+    return r
+
+
+_orig_an = master._create
+
+
+def _spy_an(**kw):
+    r = _orig_an(**kw)
+    u = r.usage
+    role = "мастер" if isinstance(kw.get("system"), list) else ("кнопки" if "По сцене" in str(kw.get("system")) else "корректор")
+    _book(role, kw.get("model", "?"), u.input_tokens, u.cache_read_input_tokens or 0, u.output_tokens,
+          u.cache_creation_input_tokens or 0)
+    return r
+
+
+master._openai_create = _spy_oa
+master._create = _spy_an
+
+# --- игрок-нейросеть
+PLAYER = {"mode": "rules", "history": []}
+PLAYER_PROMPT = (
+    "Ты — опытный игрок в настольные RPG, играешь в текстовую extraction-RPG на русском. Цель забега: "
+    "добыть ресурсы для своего города, найти ценности, выжить и выбраться через точку выхода. Играй как живой "
+    "человек: используй окружение, хитрости, разговоры с NPC, засады, торг; иногда рискуй ради добычи, но береги "
+    "жизнь. Кнопки — только подсказки, чаще пиши свою заявку. Отвечай ОДНОЙ заявкой от первого лица, 1-2 "
+    "предложения, без кавычек и пояснений."
+)
+
+
+def llm_pick(state, last_narr, suggestions, turn, max_turns):
+    res = (state.get("backpack") or {}).get("res", {})
+    brief = (f"Ход {turn} из {max_turns}. HP {state['hp']}/{state['max_hp']}, золото {state['gold']}, "
+             f"глубина {state['depth']}, рюкзак {sum(res.values())}/{state['backpack']['capacity']} {res}, "
+             f"вещи: {', '.join(state.get('inventory') or [])}.")
+    if turn >= int(max_turns * 0.8):
+        brief += " Время на исходе — иди к ближайшему выходу."
+    recent = " | ".join(PLAYER["history"][-3:]) or "—"
+    user = (f"{brief}\nТвои прошлые заявки: {recent}\n\nСЦЕНА:\n{last_narr[-2500:]}\n\n"
+            f"Кнопки: {' | '.join(suggestions) or 'нет'}\n\nТвоя заявка:")
+    if os.getenv("OPENAI_API_KEY"):
+        model = "gpt-5-mini"
+        r = _orig_oa(model=model, max_completion_tokens=1500, reasoning_effort="low",
+                     messages=[{"role": "system", "content": PLAYER_PROMPT}, {"role": "user", "content": user}])
+        u = r.usage
+        cached = getattr(getattr(u, "prompt_tokens_details", None), "cached_tokens", 0) or 0
+        _book("игрок-бот", model, u.prompt_tokens - cached, cached, u.completion_tokens)
+        text = (r.choices[0].message.content or "").strip()
+    else:
+        model = "claude-haiku-4-5"
+        r = _orig_an(model=model, max_tokens=200, system=PLAYER_PROMPT, messages=[{"role": "user", "content": user}])
+        _book("игрок-бот", model, r.usage.input_tokens, 0, r.usage.output_tokens)
+        text = "".join(b.text for b in r.content if b.type == "text").strip()
+    text = text.strip().strip("«»\"").split("\n")[0][:300]
+    return text or (suggestions[0] if suggestions else "Осматриваюсь")
 
 LOOT_WORDS = ("обыск", "осмотр", "взять", "подобр", "развед", "разделат", "сундук", "ящик", "тайник",
               "вскры", "собрат", "добы", "руб", "копат", "шкур", "исслед")
@@ -110,7 +209,12 @@ def play(client, dungeon, race, cls, max_turns, rng, out):
         m["arts"].append(last["scene_art"])
 
     for turn in range(1, max_turns + 1):
-        action, why = pick_action(state, last.get("suggested_actions") or [], turn, max_turns, rng)
+        if PLAYER["mode"] == "llm":
+            action, why = llm_pick(state, last.get("narration", ""), last.get("suggested_actions") or [],
+                                   turn, max_turns), "игрок-нейросеть"
+            PLAYER["history"].append(action)
+        else:
+            action, why = pick_action(state, last.get("suggested_actions") or [], turn, max_turns, rng)
         if why.startswith("свободная"):
             m["custom_turns"] += 1
         hp_before = state["hp"]
@@ -205,6 +309,23 @@ def summary(ms):
     return "\n".join(lines) + "\n"
 
 
+def economy(ms):
+    turns = sum((m.get("turns") or 0) + 1 for m in ms)  # +1 за открывающую сцену
+    lines = ["\n# Экономика\n", "| роль | модель | вызовов | вход | из кэша | выход | $ |", "|---|---|---|---|---|---|---|"]
+    game_usd = 0.0
+    for (role, model), e in sorted(LEDGER.items(), key=lambda kv: -kv[1]["usd"]):
+        lines.append(f"| {role} | {model} | {e['calls']} | {e['in']} | {e['cached']} | {e['out']} | ${e['usd']:.4f} |")
+        if role != "игрок-бот":
+            game_usd += e["usd"]
+    per_turn = game_usd / max(1, turns)
+    lines += ["",
+              f"**Цена игры (без игрока-бота): ${game_usd:.4f} за {turns} ходов = ${per_turn:.4f} за ход.**",
+              f"Прогноз: забег 25 ходов ≈ **${per_turn * 25:.2f}**, 100 забегов ≈ ${per_turn * 2500:.0f}.",
+              "_Цены моделей — в таблице PRICES вверху файла, сверяй с сайтами вендоров._", ""]
+    print("\n".join(lines[-4:]))
+    return "\n".join(lines) + "\n"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dungeon", default="kar_mord", help="kar_mord | forest | monastery | all")
@@ -212,9 +333,11 @@ def main():
     ap.add_argument("--race", default="human")
     ap.add_argument("--class", dest="cls", default="fighter")
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--player", default="rules", help="rules | llm")
     a = ap.parse_args()
 
     rng = random.Random(a.seed)
+    PLAYER["mode"] = a.player
     client = TestClient(app)
     client.post("/api/city/prologue_done")
     dungeons = ["kar_mord", "forest", "monastery"] if a.dungeon == "all" else [a.dungeon]
@@ -233,7 +356,7 @@ def main():
     path = ROOT / f"playtest_{stamp}.md"
     head = (f"_Плейтест {datetime.now():%Y-%m-%d %H:%M} · мастер: {GM_PROVIDER} {model} · "
             f"корректор: {os.getenv('GM_PROOFREAD', '1')} · бот: {a.race} {a.cls}, до {a.turns} ходов_\n\n")
-    path.write_text(head + summary(metrics) + "\n# Протокол\n" + "\n".join(log), encoding="utf-8")
+    path.write_text(head + summary(metrics) + economy(metrics) + "\n# Протокол\n" + "\n".join(log), encoding="utf-8")
     DB_FILE.unlink(missing_ok=True)
     print(f"\n✅ Протокол: {path.name} — скачай и пришли в чат на разбор")
 
