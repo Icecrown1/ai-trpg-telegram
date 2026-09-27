@@ -198,6 +198,7 @@ def _exec_roll(args: dict, state: dict) -> dict:
             result["crit"] = True
     if targets > 1:
         result["targets"] = targets
+    result["kind"] = kind  # для протоколов и разбора
     return result
 
 

@@ -7,3 +7,5 @@ web/dist/
 .replit.nix
 venv/
 .DS_Store
+playtest.db
+playtest_*.md
