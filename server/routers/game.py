@@ -127,7 +127,9 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
     # при shallow-копии не считалось изменением атрибута и не попадало в базу
     from ..game import artifacts as art
     level_before = int(run.state.get("level", 1))
-    delta = art.adjust_delta(run.state, result.get("state_delta") or {})
+    from ..game.resources import reroute_materials
+    delta = reroute_materials(result.get("state_delta") or {})
+    delta = art.adjust_delta(run.state, delta)
     new_state = state_mod.apply_delta(copy.deepcopy(run.state), delta)
     new_state = art.apply_transitions(run.state, new_state)
     if new_state.get("level", 1) > level_before:

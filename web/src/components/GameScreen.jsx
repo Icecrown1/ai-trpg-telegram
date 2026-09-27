@@ -66,11 +66,11 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
         <div className="stats">
           <span className={hpPct <= 25 ? 'low' : ''}>HP <b>{s.hp}/{s.max_hp}</b></span>
           <span>ЗОЛ <b>{s.gold}</b></span>
-          <span>XP <b>{s.xp}</b></span>
+          <span title="Опыт до следующего уровня">ОПЫТ <b>{s.xp}/{s.level * 100}</b></span>
           <span>{depthLabel} <b>{s.depth}</b></span>
           {s.fate > 0 && <span title="Очко судьбы: спасёт от смерти один раз">СУДЬБА <b>◆</b></span>}
           {s.backpack && <span>РЮКЗАК <b>{Object.values(s.backpack.res || {}).reduce((a, b) => a + b, 0)}/{s.backpack.capacity}</b></span>}
-          <span className="muted">ходы: {user.turns_left}</span>
+          {user.turns_left <= 50 && <span className="muted">ходов на сегодня: {user.turns_left}</span>}
         </div>
         <div className="hp-bar"><i style={{ width: `${hpPct}%` }} /></div>
         <button

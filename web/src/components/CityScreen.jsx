@@ -30,7 +30,7 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
           <span>ИСКАТЕЛИ <b>{seekers.length}/{city.seeker_slots}</b></span>
           <span>ДРУЖИНА <b>{comps.length}/{city.companion_slots}</b></span>
           <span>ПОПЫТКИ <b>{city.runs_left}/{city.runs_per_window}</b></span>
-          <span className="muted">ходы: {user.turns_left}</span>
+          {user.turns_left <= 50 && <span className="muted">ходов на сегодня: {user.turns_left}</span>}
         </div>
       </div>
 

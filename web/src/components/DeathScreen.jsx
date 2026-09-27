@@ -16,7 +16,7 @@ export default function DeathScreen({ run, onNewRun }) {
               <tr><td>Уровень</td><td>{s.level}</td></tr>
               <tr><td>Ярус</td><td>{s.depth}</td></tr>
               <tr><td>Золото</td><td>{s.gold}</td></tr>
-              <tr><td>Ходов прожито</td><td>{run.turn_count}</td></tr>
+              <tr><td>Ходов в этом забеге</td><td>{run.turn_count}</td></tr>
             </tbody>
           </table>
         </div>

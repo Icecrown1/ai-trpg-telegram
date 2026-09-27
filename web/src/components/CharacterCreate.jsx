@@ -39,8 +39,9 @@ export default function CharacterCreate({ meta, user, busy, error, onCreate, onB
         <input
           type="text"
           maxLength={24}
-          placeholder="Как тебя запомнит подземелье?"
+          placeholder="Имя героя"
           value={name}
+          style={{ width: '100%', boxSizing: 'border-box' }}
           onChange={(e) => setName(e.target.value)}
         />
       </div>
