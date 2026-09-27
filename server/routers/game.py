@@ -101,6 +101,20 @@ def _finish_seeker(db: Session, run: Run, died: bool, final_state: dict):
         s.talent_points = int(final_state.get("talent_points", 0))
 
 
+class _TurnView:
+    """Отвязанная от базы копия хода — чтобы мастер не держал соединение, пока думает."""
+    def __init__(self, t):
+        self.player_input, self.narration = t.player_input, t.narration
+
+
+def _release(db: Session):
+    """Закрыть транзакцию и вернуть соединение в пул перед долгим вызовом нейросети.
+    Иначе Postgres на Replit рвёт простаивающее SSL-соединение и запись хода падает.
+    commit() в SQLAlchemy отдаёт соединение пулу; объекты остаются в сессии и при первом
+    обращении перечитаются через новое (проверенное pre_ping) соединение."""
+    db.commit()
+
+
 def _active_run(db: Session, user: User) -> Run | None:
     return (
         db.query(Run)
@@ -252,13 +266,19 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
             .all()
         )[:-CONTEXT_RECENT_TURNS or None]
         if to_fold:
+            fold_ids = [t.id for t in to_fold]
+            views, old_summary, rid = [_TurnView(t) for t in to_fold], run.summary or "", run.id
+            _release(db)
             try:
-                run.summary = master.summarize(run.summary or "", to_fold)
-                for t in to_fold:
-                    t.summarized = True
+                new_summary = master.summarize(old_summary, views)
+                run = db.query(Run).filter(Run.id == rid).first()
+                run.summary = new_summary
+                db.query(Turn).filter(Turn.id.in_(fold_ids)).update({"summarized": True},
+                                                                    synchronize_session=False)
                 db.commit()
             except Exception:
                 db.rollback()  # summary failure must never kill the game
+                run = db.query(Run).filter(Run.id == rid).first()
 
     payload = _run_payload(run, last={
         "narration": result["narration"],
@@ -404,6 +424,8 @@ def new_run(body: NewRunIn, tg=Depends(get_tg_user), db: Session = Depends(get_d
     db.commit()
     db.refresh(run)
 
+    run_id = run.id
+    _release(db)
     try:
         result = master.opening_scene(char, dungeon_id=body.dungeon)
     except Exception:
@@ -413,6 +435,8 @@ def new_run(body: NewRunIn, tg=Depends(get_tg_user), db: Session = Depends(get_d
         run.status = "abandoned"
         db.commit()
         raise HTTPException(502, "Подземелье не отозвалось — сбой связи. Ход не списан, попробуй ещё раз.")
+    run = db.query(Run).filter(Run.id == run_id).first()
+    run.state = char
     return _apply_gm_result(db, run, "[начало забега]", result)
 
 
@@ -434,9 +458,12 @@ def make_turn(run_id: int, body: TurnIn, tg=Depends(get_tg_user), db: Session = 
         .all()
     )[::-1]
 
+    st = copy.deepcopy(run.state)
+    summary, dungeon_id = run.summary or "", run.dungeon or DEFAULT_DUNGEON
+    recent = [_TurnView(t) for t in recent]
+    _release(db)
     try:
-        result = master.run_turn(run.state, run.summary or "", recent, body.text.strip(),
-                                 dungeon_id=run.dungeon or DEFAULT_DUNGEON)
+        result = master.run_turn(st, summary, recent, body.text.strip(), dungeon_id=dungeon_id)
     except Exception:
         import traceback
         traceback.print_exc()  # причина сбоя — в консоль Replit
@@ -444,6 +471,10 @@ def make_turn(run_id: int, body: TurnIn, tg=Depends(get_tg_user), db: Session = 
         user.turns_today = max(0, user.turns_today - 1)
         db.commit()
         raise HTTPException(502, "Мастер подземелья на миг потерял нить — сбой связи. Ход не списан, повтори.")
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if run.status != "active":
+        raise HTTPException(409, "Этот забег уже окончен.")
+    run.state = st  # броски могли пометить флаги (эхо-раковина) — они часть хода
     return _apply_gm_result(db, run, body.text.strip(), result)
 
 
