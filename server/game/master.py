@@ -203,6 +203,9 @@ def _exec_roll(args: dict, state: dict) -> dict:
     return result
 
 
+_TURN_REMINDER = ("\n\n[для мастера: пиши во втором лице — «ты…», не по имени героя; "
+                  "добычу — в state_delta; сырьё — resources_add]")
+
 _JUNK_ROLL = re.compile(r"служебн|игнорир|^\s*пусто|тестов|проверочн", re.I)
 
 
@@ -311,7 +314,7 @@ def _build_messages(state: dict, summary: str, recent_turns: list, player_input:
         messages.append({"role": "user", "content": t.player_input})
         messages.append({"role": "assistant", "content": t.narration})
 
-    messages.append({"role": "user", "content": player_input})
+    messages.append({"role": "user", "content": player_input + _TURN_REMINDER})
     return messages
 
 
@@ -381,6 +384,33 @@ def _proofread(narration: str) -> str:
     return narration
 
 
+# Страж языка для Claude: латиница (кроме кубиков и КД) и CJK-иероглифы в русском тексте
+_FOREIGN = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]|\b(?!(?:\d*d\d+|КД|HP|XP)\b)[A-Za-z]{2,}\b")
+REPAIR_MODEL = "claude-haiku-4-5"
+
+
+def _needs_repair(text: str) -> bool:
+    return bool(_FOREIGN.search(text or ""))
+
+
+def _repair_anthropic(narration: str) -> str:
+    """Точечная правка, только если в тексте мусор: дешёвая модель, строгий мандат корректора."""
+    try:
+        resp = _create(
+            model=REPAIR_MODEL,
+            max_tokens=MAX_TOKENS_TURN,
+            system=_PROOFREAD_PROMPT + " Иероглифы и чужие слова внутри русских слов замени правильным русским словом по смыслу.",
+            messages=[{"role": "user", "content": narration}],
+        )
+        fixed = "".join(b.text for b in resp.content if b.type == "text").strip()
+        if 0.6 * len(narration) <= len(fixed) <= 1.5 * len(narration) and not _needs_repair(fixed):
+            print("[REPAIR] язык починен", file=sys.stderr)
+            return fixed
+    except Exception as e:
+        print(f"[REPAIR SKIP] {type(e).__name__}: {e}", file=sys.stderr)
+    return narration
+
+
 OPENAI_TOOL = {
     "type": "function",
     "function": {
@@ -422,7 +452,7 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
     for t in recent_turns:
         messages.append({"role": "user", "content": t.player_input})
         messages.append({"role": "assistant", "content": t.narration})
-    messages.append({"role": "user", "content": player_input})
+    messages.append({"role": "user", "content": player_input + _TURN_REMINDER})
 
     all_rolls = []
     for _ in range(6):
@@ -524,6 +554,8 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str,
             if len(narration) < 15:
                 narration = _clean_narration("\n\n".join(prose + [between]))
             parsed["narration"] = narration or "…Тьма молчит. Попробуй ещё раз."
+            if _needs_repair(parsed["narration"]):
+                parsed["narration"] = _repair_anthropic(parsed["narration"])
             parsed.setdefault("suggested_actions", [])
             parsed.setdefault("state_delta", {})
             parsed.setdefault("scene_art", None)
