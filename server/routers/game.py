@@ -165,9 +165,8 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
     if ss > 0:
         new_state["flags"]["stone_skin"] = ss - 1
 
-    _COMMON_TAGS = {"stairs","skull","goblin","rat","undead","cultist","merchant",
-                    "chest","altar","potion","well","torch","boss",
-                    "spider","ghost","door","key","campfire","bones","letter","crown"}
+    from ..game.art_tags import COMMON as _ART_COMMON
+    _COMMON_TAGS = set(_ART_COMMON)
     _dungeon_tags = set(get_dungeon(run.dungeon or DEFAULT_DUNGEON).get("art_tags") or [])
     art = result.get("scene_art")
     # жёсткое правило «свой/чужой»: чужая метка данжа глушится сервером

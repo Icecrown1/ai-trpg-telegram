@@ -18,6 +18,7 @@ from .gear import defense
 from .talents import TALENTS, stat_check_bonus, attack_bonus as talent_attack_bonus
 from .artifacts import ARTIFACTS as _ART, owned as _owned_art
 from . import bestiary as _bestiary
+from . import art_tags as _art_tags
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -125,7 +126,7 @@ def _exec_roll(args: dict, state: dict) -> dict:
         reason = f"{reason} ({label})" if reason else f"Проверка {label}"
     if situational:
         # ситуативный бонус мастера показываем отдельно: игрок видит, откуда каждая единица
-        why = str(args.get("modifier_reason") or "обстановка").strip()[:40]
+        why = str(args.get("modifier_reason") or "обстановка").strip()[:60]
         reason = f"{reason} [{why} {situational:+d}]"
 
     kind = args.get("kind") or "check"
@@ -202,11 +203,59 @@ def _exec_roll(args: dict, state: dict) -> dict:
     return result
 
 
+_JUNK_ROLL = re.compile(r"служебн|игнорир|^\s*пусто|тестов|проверочн", re.I)
+
+
+def _visible_rolls(rolls: list) -> list:
+    """Прячем «служебные» броски, которые модель иногда делает впустую."""
+    return [r for r in rolls if not (_JUNK_ROLL.search(str(r.get("reason", ""))) and "dc" not in r)]
+
+
+def _world_block(dungeon_id: str) -> str:
+    """Всё, что зависит от подземелья: библия, бестиарий, метки артов. Кэшируется целиком."""
+    d = get_dungeon(dungeon_id)
+    return (d["bible"] + "\n\n" + _bestiary.prompt_block(dungeon_id) + "\n\n"
+            + _art_tags.guide(d.get("art_tags")))
+
+
+FINISH_TURN_TOOL = {
+    "name": "finish_turn",
+    "description": (
+        "ОБЯЗАТЕЛЬНО завершает КАЖДЫЙ ход — других способов закончить ход нет. Вызывай после всех "
+        "бросков roll_dice. narration — ВЕСЬ рассказ хода целиком, от заявки игрока до ситуации выбора: "
+        "между бросками прозу не пиши, всё пиши один раз здесь. Поля — как в разделе ФОРМАТ ОТВЕТА."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "narration": {"type": "string", "description": "Полный текст хода, 2-4 абзаца"},
+            "suggested_actions": {"type": "array", "items": {"type": "string"},
+                                  "description": "3-4 законченные фразы с глаголом, до 32 символов"},
+            "state_delta": {"type": "object", "description": "Изменения состояния: hp, gold, xp, "
+                            "inventory_add/remove, resources_add/remove, location, depth, flags, scene, "
+                            "party_hp, party_remove, equipment_damage"},
+            "scene_art": {"type": ["string", "null"]},
+            "game_over": {"type": "boolean"},
+            "death_cause": {"type": ["string", "null"]},
+            "extracted": {"type": "boolean"},
+        },
+        "required": ["narration", "suggested_actions", "state_delta"],
+    },
+}
+
+_ANTHROPIC_FORMAT_NOTE = (
+    "ФОРМАТ ДЛЯ ЭТОГО ПОДКЛЮЧЕНИЯ: ход завершается ТОЛЬКО вызовом инструмента finish_turn с полями "
+    "из раздела ФОРМАТ ОТВЕТА. Не пиши JSON текстом и не пиши прозу между бросками — весь рассказ "
+    "хода один раз в finish_turn.narration."
+)
+
+
 def _system_blocks(dungeon_id: str) -> list:
-    bible = get_dungeon(dungeon_id)["bible"] + "\n\n" + _bestiary.prompt_block(dungeon_id)
+    bible = _world_block(dungeon_id)
     return [
         {"type": "text", "text": SYSTEM_PROMPT},
         {"type": "text", "text": bible, "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": _ANTHROPIC_FORMAT_NOTE},
     ]
 
 
@@ -366,8 +415,7 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
         intro.append(f"[СВОДКА ПРОШЛЫХ СОБЫТИЙ]\n{summary}")
     intro.append(f"[СОСТОЯНИЕ ПЕРСОНАЖА]\n{_state_brief(state)}")
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + get_dungeon(dungeon_id)["bible"]
-                                      + "\n\n" + _bestiary.prompt_block(dungeon_id)},
+        {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + _world_block(dungeon_id)},
         {"role": "user", "content": "\n\n".join(intro)},
         {"role": "assistant", "content": "Принято. Жду действий игрока."},
     ]
@@ -455,16 +503,41 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str,
     messages = _build_messages(state, summary, recent_turns, player_input)
     all_rolls = []
 
-    for _ in range(6):  # tool-use loop, hard-capped
+    prose = []  # проза между бросками — запасной рассказ, если модель забудет его в finish_turn
+    for _ in range(8):  # tool-use loop, hard-capped
         resp = _create(
             model=GM_MODEL,
             max_tokens=MAX_TOKENS_TURN,
             system=_system_blocks(dungeon_id),
-            tools=[ROLL_DICE_TOOL],
+            tools=[ROLL_DICE_TOOL, FINISH_TURN_TOOL],
             messages=messages,
         )
+        between = "".join(b.text for b in resp.content if b.type == "text").strip()
+
+        finish = next((b for b in resp.content if b.type == "tool_use" and b.name == "finish_turn"), None)
+        if finish is not None:
+            for block in resp.content:  # броски в том же ответе тоже честно исполняем
+                if block.type == "tool_use" and block.name == "roll_dice":
+                    all_rolls.append(_exec_roll(block.input, state))
+            parsed = dict(finish.input or {})
+            narration = _clean_narration(str(parsed.get("narration", "")).strip())
+            if len(narration) < 15:
+                narration = _clean_narration("\n\n".join(prose + [between]))
+            parsed["narration"] = narration or "…Тьма молчит. Попробуй ещё раз."
+            parsed.setdefault("suggested_actions", [])
+            parsed.setdefault("state_delta", {})
+            parsed.setdefault("scene_art", None)
+            parsed.setdefault("game_over", False)
+            parsed.setdefault("death_cause", None)
+            parsed.setdefault("extracted", False)
+            if not isinstance(parsed["state_delta"], dict):
+                parsed["state_delta"] = {}
+            parsed["rolls"] = _visible_rolls(all_rolls)
+            return parsed
 
         if resp.stop_reason == "tool_use":
+            if between:
+                prose.append(between)
             messages.append({"role": "assistant", "content": resp.content})
             results = []
             for block in resp.content:
@@ -479,7 +552,18 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str,
             messages.append({"role": "user", "content": results})
             continue
 
-        text = "".join(b.text for b in resp.content if b.type == "text")
+        text = between
+        # модель закончила текстом без finish_turn: если это валидный JSON хода — принимаем,
+        # если голая проза — просим сдать ход инструментом (без повторных бросков)
+        if text and not re.search(r'"narration"\s*:', text):
+            if text:
+                prose.append(text)
+            messages.append({"role": "assistant", "content": resp.content})
+            messages.append({"role": "user", "content":
+                "[ФОРМАТ] Заверши ход вызовом finish_turn: весь рассказ этого хода целиком в narration "
+                "(включая написанное выше), state_delta со всеми изменениями (находки, урон, опыт), "
+                "3-4 suggested_actions. Новых бросков не делай."})
+            continue
         if not text.strip():
             print(f"[GM RAW EMPTY] stop={resp.stop_reason} (no content)", file=sys.stderr)
             messages.append({"role": "assistant", "content": "…"})
