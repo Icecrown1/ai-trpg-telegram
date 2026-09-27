@@ -168,7 +168,8 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
     from ..game.art_tags import COMMON as _ART_COMMON
     _COMMON_TAGS = set(_ART_COMMON)
     _dungeon_tags = set(get_dungeon(run.dungeon or DEFAULT_DUNGEON).get("art_tags") or [])
-    art = result.get("scene_art")
+    from ..game.art_tags import normalize as _art_norm
+    art = _art_norm(result.get("scene_art"))
     # жёсткое правило «свой/чужой»: чужая метка данжа глушится сервером
     art = art if art in (_COMMON_TAGS | _dungeon_tags) else None
     if art:

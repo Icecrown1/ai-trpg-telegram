@@ -22,6 +22,31 @@ DUNGEON = {
 }
 
 
+# Слабые модели иногда пишут метку по-русски — переводим в наш реестр
+RU_ALIASES = {
+    "ступени": "stairs", "лестница": "stairs", "спуск": "stairs", "череп": "skull", "гоблин": "goblin",
+    "крыса": "rat", "крысы": "rat", "нежить": "undead", "культист": "cultist", "торговец": "merchant",
+    "сундук": "chest", "алтарь": "altar", "зелье": "potion", "колодец": "well", "факел": "torch",
+    "босс": "boss", "паук": "spider", "призрак": "ghost", "дух": "ghost", "дверь": "door", "ключ": "key",
+    "костёр": "campfire", "костер": "campfire", "кости": "bones", "письмо": "letter", "записка": "letter",
+    "корона": "crown", "врата": "gates", "ворота": "gates", "горн": "forge_dungeon", "кузня": "forge_dungeon",
+    "жила": "gold_vein", "подъёмник": "lift", "подъемник": "lift", "обвал": "cavein", "лес": "forest",
+    "волк": "wolf", "корневик": "rootwalker", "изба": "witch_hut", "огни": "swamp_lights",
+    "дуб": "hanging_oak", "скрипторий": "scriptorium", "колокол": "bell", "колокольня": "bell",
+    "клетка": "cage", "свечи": "candles",
+}
+
+
+def normalize(tag):
+    """Метка от модели → метка реестра (или None). Регистр, пробелы и русские синонимы прощаем."""
+    if not tag or not isinstance(tag, str):
+        return None
+    t = tag.strip().lower().replace(" ", "_")
+    if t in COMMON or t in DUNGEON:
+        return t
+    return RU_ALIASES.get(t.replace("_", " "))
+
+
 def guide(dungeon_tags) -> str:
     own = ", ".join(f"{t} ({DUNGEON.get(t, t)})" for t in sorted(dungeon_tags or []))
     common = ", ".join(f"{t} ({d})" for t, d in COMMON.items())

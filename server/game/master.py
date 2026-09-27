@@ -338,28 +338,77 @@ def _clean_narration(text: str) -> str:
     return text.strip()
 
 
+_RU_KEYS = {
+    "повествование": "narration", "рассказ": "narration", "текст": "narration", "описание": "narration",
+    "действия": "suggested_actions", "кнопки": "suggested_actions", "варианты": "suggested_actions",
+    "предложенные_действия": "suggested_actions",
+    "изменения": "state_delta", "состояние": "state_delta", "изменения_состояния": "state_delta",
+    "арт": "scene_art", "картинка": "scene_art", "конец_игры": "game_over", "смерть": "death_cause",
+    "выход": "extracted",
+}
+_TURN_KEYS = {"narration", "suggested_actions", "state_delta", "scene_art", "game_over", "extracted"}
+
+
+def _norm_keys(obj: dict) -> dict:
+    return {_RU_KEYS.get(str(k).strip().lower().replace(" ", "_"), k): v for k, v in obj.items()}
+
+
 def _extract_json(text: str) -> dict:
-    """Модель обязана вернуть голый JSON, но страхуемся от любого мусора вокруг:
-    сканируем все '{' и берём ПОСЛЕДНИЙ валидный объект с ключом narration."""
+    """Модель обязана вернуть JSON хода, но страхуемся от любого мусора вокруг.
+    1) последний валидный объект с narration — берём его;
+    2) «утечка»: проза, а после неё объект без narration, но с suggested_actions/state_delta
+       (так пишут GPT-6) — проза становится рассказом, объект — данными хода, JSON из показа убираем;
+    3) совсем не JSON — отдаём вычищенный текст как повествование."""
     stripped = re.sub(r"```(?:json)?", "", text)
     # strict=False: модели (Sonnet 5) пишут абзацы с настоящими переносами внутри строк
     decoder = json.JSONDecoder(strict=False)
-    found = None
-    for i, ch in enumerate(stripped):
-        if ch != "{":
+    found, leaked = None, None
+    i = 0
+    while i < len(stripped):
+        if stripped[i] != "{":
+            i += 1
             continue
         try:
-            obj, _ = decoder.raw_decode(stripped[i:])
+            obj, end = decoder.raw_decode(stripped[i:])
         except json.JSONDecodeError:
+            i += 1
             continue
-        if isinstance(obj, dict) and "narration" in obj:
-            found = obj  # последний валидный побеждает (проза до него отбрасывается)
+        if isinstance(obj, dict):
+            obj = _norm_keys(obj)
+            if "narration" in obj:
+                found = obj  # последний валидный побеждает
+            elif _TURN_KEYS & set(obj):
+                leaked = (i, i + end, obj)
+        i += end
     if found is not None:
         found["narration"] = _clean_narration(str(found.get("narration", "")))
         return found
-    # совсем не JSON — отдаём вычищенный текст как повествование, игра не встаёт
+    if leaked is not None:
+        a, b, obj = leaked
+        prose = _clean_narration(stripped[:a] + "\n" + stripped[b:])
+        obj["narration"] = prose
+        print("[GM LEAK] JSON в тексте — спасён, данные хода применены", file=sys.stderr)
+        return obj
     return {"narration": _clean_narration(stripped) or "…Тьма молчит. Попробуй ещё раз.",
             "suggested_actions": []}
+
+
+def _award_xp(parsed: dict, rolls: list) -> None:
+    """Опыт не должен зависеть от забывчивости модели: если мастер не дал XP, а в ходе были
+    удачные значимые броски (проверки с СЛ, попадания) — сервер начисляет 5 за каждый, до 15."""
+    delta = parsed.get("state_delta")
+    if not isinstance(delta, dict):
+        delta = parsed["state_delta"] = {}
+    try:
+        given = int(delta.get("xp") or 0)
+    except (TypeError, ValueError):
+        given = 0
+    if given > 0:
+        return
+    wins = sum(1 for r in rolls or []
+               if r.get("kind") in ("check", "player_attack") and r.get("success") is True)
+    if wins:
+        delta["xp"] = min(15, 5 * wins)
 
 
 _PROOFREAD_PROMPT = (
@@ -462,6 +511,42 @@ OPENAI_TOOL = {
 }
 
 
+OPENAI_FINISH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "finish_turn",
+        "description": FINISH_TURN_TOOL["description"],
+        "parameters": FINISH_TURN_TOOL["input_schema"],
+    },
+}
+
+_OPENAI_FORMAT_NOTE = (
+    "\n\nФОРМАТ ДЛЯ ЭТОГО ПОДКЛЮЧЕНИЯ: каждый твой ответ — вызов инструмента. Сначала нужные броски "
+    "roll_dice, затем ход завершается ТОЛЬКО вызовом finish_turn (поля как в разделе ФОРМАТ ОТВЕТА, "
+    "ключи строго по-английски). Никогда не пиши JSON или прозу обычным текстом. scene_art — только "
+    "метка из списка МЕТКИ АРТОВ латиницей."
+)
+
+
+def _finalize_openai(parsed: dict, all_rolls: list) -> dict:
+    parsed = _norm_keys(dict(parsed or {}))
+    parsed["narration"] = _clean_narration(str(parsed.get("narration", "")).strip())
+    parsed.setdefault("suggested_actions", [])
+    if not isinstance(parsed.get("state_delta"), dict):
+        parsed["state_delta"] = {}
+    parsed.setdefault("scene_art", None)
+    parsed.setdefault("game_over", False)
+    parsed.setdefault("death_cause", None)
+    parsed.setdefault("extracted", False)
+    parsed["rolls"] = _visible_rolls(all_rolls)
+    _award_xp(parsed, all_rolls)
+    if GM_PROOFREAD:
+        parsed["narration"] = _proofread(str(parsed["narration"]))
+    if not [a for a in (parsed.get("suggested_actions") or []) if str(a).strip()]:
+        parsed["suggested_actions"] = _buttons_from_scene(parsed["narration"])
+    return parsed
+
+
 def _openai_create(**kwargs):
     import openai
     last = None
@@ -486,7 +571,7 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
         intro.append(f"[СВОДКА ПРОШЛЫХ СОБЫТИЙ]\n{summary}")
     intro.append(f"[СОСТОЯНИЕ ПЕРСОНАЖА]\n{_state_brief(state)}")
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + _world_block(dungeon_id)},
+        {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + _world_block(dungeon_id) + _OPENAI_FORMAT_NOTE},
         {"role": "user", "content": "\n\n".join(intro)},
         {"role": "assistant", "content": "Принято. Жду действий игрока."},
     ]
@@ -496,12 +581,15 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
     messages.append({"role": "user", "content": player_input + _TURN_REMINDER})
 
     all_rolls = []
-    for _ in range(6):
+    prose = []
+    for step in range(7):
         kwargs = dict(
             model=GM_MODEL,
             # у reasoning-моделей токены размышлений едят тот же лимит — даём запас
-            max_completion_tokens=MAX_TOKENS_TURN * 2,
-            tools=[OPENAI_TOOL],
+            max_completion_tokens=max(MAX_TOKENS_TURN * 2, 6000),
+            tools=[OPENAI_TOOL, OPENAI_FINISH_TOOL],
+            # каждый ответ — вызов инструмента: текст с JSON-утечкой физически невозможен
+            tool_choice="required" if step < 6 else {"type": "function", "function": {"name": "finish_turn"}},
             messages=messages,
         )
         if _takes_reasoning(GM_MODEL):
@@ -512,7 +600,29 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
         resp = _openai_create(**kwargs)
         msg = resp.choices[0].message
 
+        finish = next((tc for tc in (msg.tool_calls or []) if tc.function.name == "finish_turn"), None)
+        if finish is not None:
+            for tc in msg.tool_calls:  # броски в том же ответе тоже честно исполняем
+                if tc.function.name == "roll_dice":
+                    try:
+                        all_rolls.append(_exec_roll(json.loads(tc.function.arguments or "{}"), state))
+                    except json.JSONDecodeError:
+                        pass
+            try:
+                parsed = json.JSONDecoder(strict=False).decode(finish.function.arguments or "{}")
+            except json.JSONDecodeError:
+                parsed = _extract_json(finish.function.arguments or "")
+            if not isinstance(parsed, dict):
+                parsed = {}
+            parsed = _norm_keys(parsed)
+            if len(str(parsed.get("narration", "")).strip()) < 15:
+                parsed["narration"] = "\n\n".join(prose + [msg.content or ""]).strip() \
+                    or "…Тьма молчит. Попробуй ещё раз."
+            return _finalize_openai(parsed, all_rolls)
+
         if msg.tool_calls:
+            if (msg.content or "").strip():
+                prose.append(msg.content.strip())
             messages.append({
                 "role": "assistant",
                 "content": msg.content or "",
@@ -540,7 +650,7 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
             messages.append({"role": "user", "content":
                 "[СБОЙ ФОРМАТА] Ответ пришёл пустым. Заверши ход ЗАНОВО: полный JSON, "
                 "narration с исходом всех уже брошенных кубиков, state_delta с уроном, "
-                "3-4 suggested_actions. Только JSON."})
+                "3-4 suggested_actions. Только вызовом finish_turn."})
             continue
         parsed = _extract_json(text)
         narration = str(parsed.get("narration", "")).strip()
@@ -550,20 +660,9 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
             messages.append({"role": "assistant", "content": text or "…"})
             messages.append({"role": "user", "content":
                 "[СБОЙ ФОРМАТА] Твой прошлый ответ был пуст или оборван. Повтори ход ЗАНОВО: "
-                "полный JSON, narration 2-4 абзаца, 3-4 suggested_actions. Только JSON."})
+                "полный JSON, narration 2-4 абзаца, 3-4 suggested_actions. Только вызовом finish_turn."})
             continue
-        parsed.setdefault("suggested_actions", [])
-        parsed.setdefault("state_delta", {})
-        parsed.setdefault("scene_art", None)
-        parsed.setdefault("game_over", False)
-        parsed.setdefault("death_cause", None)
-        parsed.setdefault("extracted", False)
-        parsed["rolls"] = _visible_rolls(all_rolls)
-        if GM_PROOFREAD:
-            parsed["narration"] = _proofread(str(parsed["narration"]))
-        if not [a for a in (parsed.get("suggested_actions") or []) if str(a).strip()]:
-            parsed["suggested_actions"] = _buttons_from_scene(parsed["narration"])
-        return parsed
+        return _finalize_openai(parsed, all_rolls)
 
     return {"narration": "Подземелье замерло в нерешительности. Повтори действие.",
             "suggested_actions": [], "state_delta": {}, "scene_art": None,
@@ -623,6 +722,7 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str,
             if not isinstance(parsed["state_delta"], dict):
                 parsed["state_delta"] = {}
             parsed["rolls"] = _visible_rolls(all_rolls)
+            _award_xp(parsed, all_rolls)
             return parsed
 
         if resp.stop_reason == "tool_use":
