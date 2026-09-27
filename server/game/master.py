@@ -36,6 +36,11 @@ def _openai_client():
 _TRANSIENT = (429, 500, 502, 503, 529)
 
 
+def _new_openai_family(model: str) -> bool:
+    """Модели нового поколения (gpt-6-*, gpt-5.6-*): размышления по умолчанию включены."""
+    return bool(re.match(r"^gpt-(6|5\.\d)", model or ""))
+
+
 def _takes_reasoning(model: str) -> bool:
     """reasoning_effort передаём только моделям, где он точно поддерживается (gpt-5, gpt-5-mini/nano, o-серия)."""
     return bool(re.match(r"^(gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?|o\d)", model or "")) and "." not in model
@@ -501,6 +506,9 @@ def _run_turn_openai(state: dict, summary: str, recent_turns: list, player_input
         )
         if _takes_reasoning(GM_MODEL):
             kwargs["reasoning_effort"] = OPENAI_REASONING
+        elif _new_openai_family(GM_MODEL):
+            # gpt-6 / gpt-5.6 думают по умолчанию, а в chat/completions это несовместимо с инструментами
+            kwargs["reasoning_effort"] = "none"
         resp = _openai_create(**kwargs)
         msg = resp.choices[0].message
 
