@@ -413,6 +413,23 @@ def _repair_anthropic(narration: str) -> str:
     return narration
 
 
+def _buttons_from_scene(narration: str) -> list:
+    """Мастер забыл кнопки — дешёвая модель достраивает 3-4 действия по тексту сцены."""
+    try:
+        resp = _create(
+            model=REPAIR_MODEL, max_tokens=200,
+            system=("По сцене текстовой RPG предложи игроку 4 разных действия. Каждое — законченная фраза "
+                    "с глаголом, до 32 символов, по-русски. Ответ — только 4 строки, без нумерации."),
+            messages=[{"role": "user", "content": narration[-1500:]}],
+        )
+        text = "".join(b.text for b in resp.content if b.type == "text")
+        acts = [re.sub(r"^[\s\-•\d.)]+", "", l).strip() for l in text.splitlines()]
+        return [a[:40] for a in acts if a][:4]
+    except Exception as e:
+        print(f"[BUTTONS SKIP] {type(e).__name__}: {e}", file=sys.stderr)
+        return []
+
+
 OPENAI_TOOL = {
     "type": "function",
     "function": {
@@ -558,6 +575,8 @@ def run_turn(state: dict, summary: str, recent_turns: list, player_input: str,
             parsed["narration"] = narration or "…Тьма молчит. Попробуй ещё раз."
             if _needs_repair(parsed["narration"]):
                 parsed["narration"] = _repair_anthropic(parsed["narration"])
+            if not [a for a in (parsed.get("suggested_actions") or []) if str(a).strip()]:
+                parsed["suggested_actions"] = _buttons_from_scene(parsed["narration"])
             parsed.setdefault("suggested_actions", [])
             parsed.setdefault("state_delta", {})
             parsed.setdefault("scene_art", None)
