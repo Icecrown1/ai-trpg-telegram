@@ -44,6 +44,8 @@ class City(Base):
     companions = Column(JSON, nullable=False, default=list)
     # сюжетные флаги города: {"dwarf_saved": true, "barman_dead": true}
     flags = Column(JSON, nullable=False, default=dict)
+    # королевский сундук: снятое с искателей снаряжение и вещи [{kind: gear|item, ...}]
+    chest = Column(JSON, nullable=True, default=list)
 
 
 class Seeker(Base):
@@ -65,6 +67,7 @@ class Seeker(Base):
     status = Column(String(12), default="idle")  # idle | in_run | dead
     equipment = Column(JSON, nullable=False, default=dict)  # {"weapon": {...}, "armor": {...}, "pack": {...}}
     inventory = Column(JSON, nullable=False, default=list)  # найденное в забегах: верёвки, ключи, зелья
+    gear_bag = Column(JSON, nullable=True, default=list)  # запасное снаряжение: вещи-словари из gear.py
     talents = Column(JSON, nullable=False, default=list)
     stat_points = Column(Integer, default=0)
     talent_points = Column(Integer, default=0)

@@ -45,6 +45,9 @@ export const api = {
   adminCheck: () => req('/api/admin/check'),
   adminReset: (what) => req(`/api/admin/${what}`, { method: 'POST' }),
   levelup: (runId, stat) => req(`/api/run/${runId}/levelup`, { method: 'POST', body: JSON.stringify({ stat }) }),
+  gear: (runId, body) => req(`/api/run/${runId}/gear`, { method: 'POST', body: JSON.stringify(body) }),
+  chest: (body) => req('/api/city/chest', { method: 'POST', body: JSON.stringify(body) }),
+  refine: (recipe_id, times = 1) => req('/api/city/refine', { method: 'POST', body: JSON.stringify({ recipe_id, times }) }),
   pack: (runId, body) => req(`/api/run/${runId}/pack`, { method: 'POST', body: JSON.stringify(body) }),
   talent: (runId, talent_id) => req(`/api/run/${runId}/talent`, { method: 'POST', body: JSON.stringify({ talent_id }) }),
 }

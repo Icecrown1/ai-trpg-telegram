@@ -14,8 +14,9 @@ from ..config import (ANTHROPIC_API_KEY, OPENAI_API_KEY, GM_PROVIDER,
 from ..dice import roll
 from .prompts import SYSTEM_PROMPT, SUMMARY_PROMPT
 from .dungeons import get_dungeon, DEFAULT_DUNGEON
-from .resources import res_brief, backpack_load
-from .gear import defense
+from .resources import res_brief, backpack_load, stack_of
+from .gear import defense, describe as _describe, SLOTS as _GEAR_SLOTS
+from .combat import brief as _combat_brief
 from .talents import TALENTS, stat_check_bonus, attack_bonus as talent_attack_bonus
 from .artifacts import ARTIFACTS as _ART, owned as _owned_art
 from . import bestiary as _bestiary
@@ -75,9 +76,12 @@ ROLL_DICE_TOOL = {
             "sides": {"type": "integer", "description": "Граней у кубика (например 20, 6)"},
             "count": {"type": "integer", "description": "Сколько кубиков, по умолчанию 1"},
             "kind": {
-                "type": "string", "enum": ["check", "player_attack", "enemy_attack", "damage"],
+                "type": "string",
+                "enum": ["check", "player_attack", "enemy_attack", "damage", "ambush", "recruit"],
                 "description": "Тип броска: player_attack (атака игрока, сервер добавит бонус оружия), "
-                               "enemy_attack (по игроку, сервер подставит СЛ=защите), damage (урон), check.",
+                               "enemy_attack (по игроку, сервер подставит СЛ=защите), damage (урон), check, "
+                               "ambush (подкрасться для засады — СЛ ставит сервер по глубине), "
+                               "recruit (переманить врага на службу — укажи target, СЛ для культистов ставит сервер).",
             },
             "stat": {
                 "type": "string", "enum": ["STR", "DEX", "CON", "INT", "WIS", "CHA"],
@@ -112,6 +116,34 @@ ROLL_DICE_TOOL = {
 _STAT_RU = {"STR": "СИЛ", "DEX": "ЛОВ", "CON": "ВЫН", "INT": "ИНТ", "WIS": "МДР", "CHA": "ХАР"}
 
 
+def ambush_dc(depth) -> int:
+    """СЛ засады: 8 на первой глубине, +2 за глубину до 4-й (14), дальше +1 за глубину."""
+    d = max(1, int(depth or 1))
+    return 8 + 2 * (min(d, 4) - 1) + max(0, d - 4)
+
+
+_RECRUIT_HARD = {"cultist", "white_cultist", "ash_novice"}
+_FAITH_CLASSES = {"cleric", "templar"}
+
+# если мастер забыл stat — угадываем по сути действия, проверка без характеристики нечестна
+_STAT_HINTS = [
+    ("DEX", r"отмычк|взлом\w* замк|скрыт|красться|подкрад|уклон|увернут|ловкост|прыжок|прыгн|балансир|карман|стрел|метн"),
+    ("STR", r"выломат|вышиб|сломат|подня|поднят|удерж|толкн|сдвин|плечом|рычаг|лом\b|взобрат|карабк|тащ"),
+    ("WIS", r"замет|внимател|осмотр|услыш|почуя|чутьё|чутье|интуиц|выслеж|след|воля|страх"),
+    ("INT", r"вспомн|руны|рун\b|знани|загадк|механизм|прочест|прочита|расшифр|истори|магическ"),
+    ("CHA", r"убед|уговор|обман|солгат|соврат|запуг|торг|договор|очаров|переман|вербов|блеф"),
+    ("CON", r"выдерж|яд|холод|устал|бег\b|задержат\w* дыхан|боль|стойк"),
+]
+
+
+def _infer_stat(reason: str):
+    low = (reason or "").lower()
+    for stat, pat in _STAT_HINTS:
+        if re.search(pat, low):
+            return stat
+    return None
+
+
 def _exec_roll(args: dict, state: dict) -> dict:
     """Выполнение броска: модификатор характеристики берётся из листа персонажа,
     модель может добавить лишь ситуативные ±3. Сервер сам считает: цели (СЛ+3 за
@@ -127,9 +159,21 @@ def _exec_roll(args: dict, state: dict) -> dict:
         situational = max(-3, min(3, int(args.get("modifier", 0) or 0)))
     except (TypeError, ValueError):
         pass
+    kind = args.get("kind") or "check"
     stat = args.get("stat")
-    stat_mod = 0
     reason = args.get("reason", "")
+    if kind == "ambush":
+        stat = stat or "DEX"
+        dc = ambush_dc(state.get("depth", 1))
+        reason = reason or "Подкрасться для засады"
+    elif kind == "recruit":
+        stat = "CHA"
+        if args.get("target") in _RECRUIT_HARD:
+            dc = 14 if state.get("class") in _FAITH_CLASSES else 18
+            reason = f"{reason or 'Переманить на службу'} [культ держит крепко, СЛ {dc}]"
+    if stat not in _STAT_RU and sides == 20 and count == 1 and kind in ("check", "ambush", "recruit"):
+        stat = _infer_stat(reason)
+    stat_mod = 0
     if stat in _STAT_RU:
         score = int((state.get("stats") or {}).get(stat, 10))
         stat_mod = (score - 10) // 2 + stat_check_bonus(state.get("talents"), stat)
@@ -140,7 +184,6 @@ def _exec_roll(args: dict, state: dict) -> dict:
         why = str(args.get("modifier_reason") or "обстановка").strip()[:60]
         reason = f"{reason} [{why} {situational:+d}]"
 
-    kind = args.get("kind") or "check"
     weapon_mod = 0
     targets = 1
     if kind == "enemy_attack":
@@ -171,6 +214,11 @@ def _exec_roll(args: dict, state: dict) -> dict:
 
     adv_bonus = 0
     adv_die = args.get("advantage_die")
+    flags = state.setdefault("flags", {})
+    if kind == "player_attack" and flags.get("ambush_ready"):
+        adv_die = 6  # засада подготовлена проверкой — первый удар сервер усиливает сам
+        flags["ambush_ready"] = False
+        reason = f"{reason} [из засады]"
     if adv_die in (3, 6) and kind != "damage":
         import secrets as _s
         adv_bonus = _s.randbelow(int(adv_die)) + 1
@@ -179,6 +227,10 @@ def _exec_roll(args: dict, state: dict) -> dict:
     result = roll(sides=sides, count=count,
                   modifier=stat_mod + situational + weapon_mod + adv_bonus,
                   reason=reason, dc=dc)
+
+    # «пустяковая» проверка (СЛ 2 и ниже) проваливается только чистой единицей
+    if result.get("dc") is not None and int(result["dc"]) <= 2 and sides == 20 and count == 1:
+        result["success"] = result["rolls"][0] != 1
 
     from .artifacts import owned as _owned
     have = _owned(state)
@@ -210,6 +262,9 @@ def _exec_roll(args: dict, state: dict) -> dict:
             result["crit"] = True
     if targets > 1:
         result["targets"] = targets
+    if kind == "ambush" and result.get("success"):
+        flags["ambush_ready"] = True
+        result["ambush_ready"] = True
     result["kind"] = kind  # для протоколов и разбора
     return result
 
@@ -247,7 +302,7 @@ FINISH_TURN_TOOL = {
                                   "description": "3-4 законченные фразы с глаголом, до 32 символов"},
             "state_delta": {"type": "object", "description": "Изменения состояния: hp, gold, xp, "
                             "inventory_add/remove, resources_add/remove, location, depth, flags, scene, "
-                            "party_hp, party_remove, equipment_damage"},
+                            "party_hp, party_remove, party_add, equipment_damage, gear_add, combat"},
             "scene_art": {"type": ["string", "null"]},
             "game_over": {"type": "boolean"},
             "death_cause": {"type": ["string", "null"]},
@@ -277,9 +332,10 @@ def _floor_brief(state: dict):
     """Что игрок сам выложил на пол текущего места — мастер должен это видеть (можно подобрать)."""
     f = state.get("floor") or {}
     here = (state.get("scene") or {}).get("place") or state.get("location")
-    if f.get("place") != here or not (f.get("res") or f.get("items")):
+    if f.get("place") != here or not (f.get("res") or f.get("items") or f.get("gear")):
         return None
-    return {"ресурсы": res_brief(f.get("res")), "вещи": f.get("items") or []}
+    return {"ресурсы": res_brief(f.get("res")), "вещи": f.get("items") or [],
+            "снаряжение": [g.get("name") for g in f.get("gear") or []]}
 
 
 def _state_brief(state: dict) -> str:
@@ -306,17 +362,32 @@ def _state_brief(state: dict) -> str:
                 for m in state.get("party", [])
             ],
             "защита": defense(state),
-            "оружие": ((state.get("equipment") or {}).get("weapon") or {}).get("name")
-                      and {**(state.get("equipment") or {}).get("weapon", {})} or None,
-            "броня": ((state.get("equipment") or {}).get("armor") or {}).get("name")
-                     and {**(state.get("equipment") or {}).get("armor", {})} or None,
+            "снаряжение": {
+                _GEAR_SLOTS[sl]: f'{it["name"]} ({_describe(it)})'
+                for sl, it in (state.get("equipment") or {}).items()
+                if it and sl in _GEAR_SLOTS and sl != "pack"
+            },
+            "оружие": ((state.get("equipment") or {}).get("weapon") or {}).get("name") or "голые руки (1d2)",
+            "урон_оружия": ((state.get("equipment") or {}).get("weapon") or {}).get("dmg") or "1d2",
+            "сумка_снаряжения": [f'{b["name"]} ({_describe(b)})' for b in (state.get("bag") or [])],
+            "синие_сердца": int(state.get("ward", 0) or 0),
+            "бой": _combat_brief(state),
             "рюкзак": {
-                "занято": backpack_load((state.get("backpack") or {}).get("res")),
-                "вместимость": (state.get("backpack") or {}).get("capacity", 8),
+                "слотов_занято": backpack_load((state.get("backpack") or {}).get("res"),
+                                               stack_of(state.get("backpack"))),
+                "слотов_всего": (state.get("backpack") or {}).get("capacity", 12),
+                "стопка": stack_of(state.get("backpack")),
                 "ресурсы": res_brief((state.get("backpack") or {}).get("res")),
             },
             "флаги": state.get("flags", {}),
             "брошено_здесь": _floor_brief(state),
+            "мир": {
+                "Торин (кузнец, ярус 2 Кар-Морда)": "спасён, живёт в городе"
+                if (state.get("world") or {}).get("dwarf_saved") else "НЕ спасён — ждёт в цепях у горна",
+                "Финеус (маг, Обитель)": "спасён, живёт в городе"
+                if (state.get("world") or {}).get("mage_saved") else "НЕ спасён — ждёт в клетке",
+            },
+            "ход_забега": state.get("turn_no"),
         },
         ensure_ascii=False,
     )
@@ -416,7 +487,7 @@ def _award_xp(parsed: dict, rolls: list) -> None:
     if given > 0:
         return
     wins = sum(1 for r in rolls or []
-               if r.get("kind") in ("check", "player_attack") and r.get("success") is True)
+               if r.get("kind") in ("check", "player_attack", "ambush", "recruit") and r.get("success") is True)
     if wins:
         delta["xp"] = min(15, 5 * wins)
 

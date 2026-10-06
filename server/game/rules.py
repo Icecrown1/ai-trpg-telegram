@@ -80,7 +80,11 @@ def _dedupe(items):
 def seeker_to_state(seeker, dungeon: dict, name_override=None) -> dict:
     """Собрать боевое состояние из персистентного искателя."""
     c = CLASSES[seeker.cls]
-    eq = dict(seeker.equipment or {})
+    from .gear import normalize_loadout
+    # стартовый набор — только совсем новому искателю (без вещей и без снаряжения)
+    fresh = not seeker.inventory and not seeker.equipment and not getattr(seeker, "gear_bag", None)
+    inv0 = list(c["start_items"]) if fresh else _dedupe(seeker.inventory or [])
+    eq, bag, inv0 = normalize_loadout(seeker.equipment or {}, getattr(seeker, "gear_bag", None) or [], inv0)
     from .talents import capacity_bonus
     talents = list(seeker.talents or [])
     from .artifacts import capacity_penalty
@@ -93,11 +97,14 @@ def seeker_to_state(seeker, dungeon: dict, name_override=None) -> dict:
         "stats": dict(seeker.stats),
         "hp": seeker.max_hp, "max_hp": seeker.max_hp,
         "gold": 30, "start_gold": 30,  # дорожные: в казну при выходе не идут
-        "inventory": _dedupe(seeker.inventory) if seeker.inventory else list(c["start_items"]),
+        "inventory": inv0,
+        "bag": bag,
+        # призрачный доспех заново дарит синие сердца в начале каждого забега
+        "ward": 3 if "Призрачный доспех" in inv0 else 0,
         "spells": list(c.get("spells", [])),
         "location": dungeon["start_location"], "depth": 1, "flags": {},
         "fate": 1,
-        "backpack": {"capacity": 8 + pack_bonus, "res": {}},
+        "backpack": {"capacity": BACKPACK_CAPACITY_DEFAULT + pack_bonus, "res": {}},
         "equipment": eq,
         "talents": talents,
         "stat_points": int(seeker.stat_points or 0),
@@ -119,7 +126,7 @@ def new_character(name: str, race: str, cls: str, dungeon: dict = None) -> dict:
     for s, m in RACES[race]["mods"].items():
         stats[s] = max(3, min(18, stats[s] + m))
     max_hp = c["hit_die"] + max(0, mod(stats["CON"])) + int(RACES[race].get("hp_bonus", 0))
-    return {
+    st = {
         "name": name[:24] or "Безымянный",
         "race": race,
         "class": cls,
@@ -132,6 +139,8 @@ def new_character(name: str, race: str, cls: str, dungeon: dict = None) -> dict:
         "fate": 1,  # очко судьбы: один раз спасает от смерти за забег
         "backpack": {"capacity": BACKPACK_CAPACITY_DEFAULT, "res": {}},
         "equipment": {},
+        "bag": [],
+        "ward": 0,
         "talents": list(c.get("talents", [])),
         "stat_points": 0,
         "talent_points": 0,
@@ -144,3 +153,6 @@ def new_character(name: str, race: str, cls: str, dungeon: dict = None) -> dict:
         "depth": 1,
         "flags": {},
     }
+    from .gear import normalize_loadout
+    st["equipment"], st["bag"], st["inventory"] = normalize_loadout({}, [], st["inventory"])
+    return st

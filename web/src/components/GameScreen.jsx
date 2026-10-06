@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import DiceOverlay from './DiceOverlay.jsx'
 import SceneArt from './SceneArt.jsx'
+import { gearStats, SLOT_RU, WEAR } from './Cost.jsx'
 
 const STAT_RU = { STR: 'СИЛ', DEX: 'ЛОВ', CON: 'ВЫН', INT: 'ИНТ', WIS: 'МДР', CHA: 'ХАР' }
 const mod = (v) => { const m = Math.floor((v - 10) / 2); return m >= 0 ? `+${m}` : `${m}` }
@@ -24,7 +25,7 @@ function Roll({ r }) {
   )
 }
 
-export default function GameScreen({ run, user, meta, busy, error, onTurn, onAbandon, onSpendStat, onPickTalent, onPack }) {
+export default function GameScreen({ run, user, meta, busy, error, onTurn, onAbandon, onSpendStat, onPickTalent, onPack, onGear }) {
   const depthLabel = meta?.dungeons?.find((d) => d.id === run.dungeon)?.depth_label || 'ЯРУС' 
   const [text, setText] = useState('')
   const [showInv, setShowInv] = useState(false)
@@ -38,7 +39,11 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
   const hpPct = Math.round((s.hp / s.max_hp) * 100)
   const resName = (id) => meta?.resources?.[id] || id
   const packRes = Object.entries(s.backpack?.res || {}).filter(([, n]) => n > 0)
-  const packLoad = packRes.reduce((a, [, n]) => a + n, 0)
+  const stack = s.backpack?.stack || 3
+  const slotsOf = (n) => Math.ceil(n / stack)
+  const packLoad = packRes.reduce((a, [, n]) => a + slotsOf(n), 0)
+  const combat = s.combat
+  const floorGear = (s.floor && s.floor.place === (s.scene?.place || s.location) ? s.floor.gear : null) || []
   const here = s.scene?.place || s.location
   const floor = s.floor && s.floor.place === here ? s.floor : null
   const floorRes = Object.entries(floor?.res || {}).filter(([, n]) => n > 0)
@@ -77,6 +82,7 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
           <span title="Опыт до следующего уровня">ОПЫТ <b>{s.xp}/{s.level * 100}</b></span>
           <span>{depthLabel} <b>{s.depth}</b></span>
           {s.fate > 0 && <span title="Очко судьбы: спасёт от смерти один раз">СУДЬБА <b>◆</b></span>}
+          {s.ward > 0 && <span className="ward" title="Синие сердца: каждое гасит один пропущенный удар">{'💙'.repeat(Math.min(6, s.ward))}</span>}
           {s.backpack && (
             <span className="pack-toggle" onClick={() => setShowPack((v) => !v)} title="Открыть рюкзак">
               РЮКЗАК <b>{packLoad}/{s.backpack.capacity}</b> {showPack ? '▾' : '▸'}
@@ -90,11 +96,11 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
             {packRes.length === 0 && <p className="muted">Рюкзак пуст.</p>}
             {packRes.map(([id, n]) => (
               <div className="pack-row" key={id}>
-                <span>{resName(id)} ×{n}</span>
+                <span>{resName(id)} ×{n} <i className="muted">({slotsOf(n)} сл.)</i></span>
                 <button disabled={busy} onClick={() => onPack({ action: 'drop', res: id })}>выбросить 1</button>
               </div>
             ))}
-            {(floorRes.length > 0 || floorItems.length > 0) && (
+            {(floorRes.length > 0 || floorItems.length > 0 || floorGear.length > 0) && (
               <>
                 <p className="muted" style={{ margin: '6px 0 2px' }}>На полу здесь:</p>
                 {floorRes.map(([id, n]) => (
@@ -102,6 +108,12 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
                     <span>{resName(id)} ×{n}</span>
                     <button disabled={busy || packLoad >= s.backpack.capacity}
                       onClick={() => onPack({ action: 'take', res: id })}>подобрать</button>
+                  </div>
+                ))}
+                {floorGear.map((it) => (
+                  <div className="pack-row" key={'fg' + it.uid}>
+                    <span>{it.name} <i className="muted">{gearStats(it)}</i></span>
+                    <button disabled={busy} onClick={() => onGear({ action: 'take', uid: it.uid })}>подобрать</button>
                   </div>
                 ))}
                 {floorItems.map((it, i) => (
@@ -113,7 +125,7 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
               </>
             )}
             <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-              Брошенное остаётся на этом месте. Уйдёшь дальше — не вернёшь.
+              Слот держит стопку до {stack} одинаковых. Брошенное остаётся на этом месте. Уйдёшь дальше — не вернёшь.
             </p>
           </div>
         )}
@@ -124,7 +136,21 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
           {showInv ? '▾' : '▸'} персонаж и снаряжение ({s.inventory.length})
           {(s.stat_points > 0 || s.talent_points > 0) && <b> · ⬆ прокачка!</b>}
         </button>
-        {(s.party || []).length > 0 && (
+        {combat && (
+          <div className="combat">
+            <div className="muted" style={{ fontSize: 12 }}>⚔ БОЙ · раунд {combat.round} · очередь по инициативе</div>
+            {(combat.order || []).map((e, i) => (
+              <div key={e.name + i} className={`combat-row ${e.side}${e.you ? ' you' : ''}`}>
+                <span className="init">{e.init}</span>
+                <span className="who">{e.side === 'enemy' ? '☠' : e.you ? '★' : '⚔'} {e.name}</span>
+                <span className="hpbar"><i style={{ width: `${Math.max(0, Math.round(100 * (e.hp || 0) / (e.max_hp || 1)))}%` }} /></span>
+                <span className="hpnum">{e.hp}/{e.max_hp}</span>
+              </div>
+            ))}
+            <div className="muted" style={{ fontSize: 11 }}>Ты командуешь всеми своими: пиши приказы соратникам в одном сообщении.</div>
+          </div>
+        )}
+        {!combat && (s.party || []).length > 0 && (
           <div className="inv" style={{ marginTop: 4 }}>
             {s.party.map((m) => (
               <span key={m.name} className="inv-item">
@@ -135,12 +161,27 @@ export default function GameScreen({ run, user, meta, busy, error, onTurn, onAba
         )}
         {showInv && (
           <div className="inv">
-            {(s.equipment?.weapon || s.equipment?.armor) && (
-              <div style={{ marginBottom: 6 }}>
-                {s.equipment.weapon && <span className="inv-item spell">⚔ {s.equipment.weapon.name} (+{s.equipment.weapon.atk}, {s.equipment.weapon.dmg})</span>}
-                {s.equipment.armor && <span className="inv-item spell">🛡 {s.equipment.armor.name} (защита +{s.equipment.armor.def}, прочн. {s.equipment.armor.dur})</span>}
-              </div>
-            )}
+            <div style={{ marginBottom: 6 }}>
+              {WEAR.map((sl) => {
+                const it = s.equipment?.[sl]
+                return (
+                  <div className="pack-row" key={sl}>
+                    <span>{SLOT_RU[sl]}: {it ? <><b>{it.name}</b> <i className="muted">{gearStats(it)}</i></> : <i className="muted">пусто</i>}</span>
+                    {it && <button disabled={busy} onClick={() => onGear({ action: 'unequip', slot: sl })}>снять</button>}
+                  </div>
+                )
+              })}
+              {(s.bag || []).length > 0 && <p className="muted" style={{ margin: '6px 0 2px' }}>Сумка ({s.bag.length}/6):</p>}
+              {(s.bag || []).map((it) => (
+                <div className="pack-row" key={it.uid}>
+                  <span>{it.name} <i className="muted">{gearStats(it)}</i></span>
+                  <span className="row-btns">
+                    <button disabled={busy} onClick={() => onGear({ action: 'equip', uid: it.uid })}>надеть</button>
+                    <button disabled={busy} onClick={() => window.confirm(`Бросить «${it.name}» здесь?`) && onGear({ action: 'drop', uid: it.uid })}>бросить</button>
+                  </span>
+                </div>
+              ))}
+            </div>
             {s.stat_points > 0 && (
               <p className="muted" style={{ marginBottom: 4 }}>Свободных очков характеристик: <b>{s.stat_points}</b> — жми ⊕</p>
             )}

@@ -399,3 +399,19 @@ input::placeholder { color: var(--amber-faint); }
 .pack { margin-top: 6px; border-top: 1px dashed var(--amber-faint); padding-top: 6px; }
 .pack-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 3px 0; font-size: 13px; }
 .pack-row button { padding: 2px 8px; font-size: 12px; }
+
+.cost { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 4px 0 8px; font-size: 12px; }
+.cost-item.ok { color: var(--amber); }
+.cost-item.miss { color: var(--danger); }
+.row-btns { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.pack-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.expedition { margin-top: 8px; }
+.ward { letter-spacing: -2px; }
+.combat { margin-top: 6px; border: 1px dashed var(--amber-dim); padding: 6px; }
+.combat-row { display: grid; grid-template-columns: 26px 1fr 60px 44px; gap: 6px; align-items: center; font-size: 12px; margin: 2px 0; }
+.combat-row.enemy { color: var(--danger); }
+.combat-row.you .who { font-weight: bold; }
+.combat-row .init { text-align: right; color: var(--amber-dim); }
+.combat-row .hpbar { height: 5px; border: 1px solid var(--amber-faint); }
+.combat-row .hpbar i { display: block; height: 100%; background: currentColor; }
+.combat-row .hpnum { text-align: right; }

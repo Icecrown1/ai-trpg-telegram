@@ -67,7 +67,16 @@ ARTIFACTS = {
         "rule": "первая атака носителя в каждом новом бою всегда идёт с advantage_die: 6, и враг не отвечает "
                 "на неё в этот ход",
     },
+    "ghost_mail": {
+        "name": "Призрачный доспех",
+        "desc": "Дарит три синих сердца: каждое целиком принимает один пропущенный удар. Растаявшие не возвращаются.",
+        "rule": "сервер сам гасит удары синими сердцами и пишет об этом; ты только опиши, как удар тонет "
+                "в мерцающей призрачной кольчуге",
+        "enforced": True,
+    },
 }
+
+GHOST_MAIL_WARD = 3
 
 BY_NAME = {a["name"]: aid for aid, a in ARTIFACTS.items()}
 
@@ -120,6 +129,8 @@ def apply_transitions(old: dict, new: dict) -> dict:
     gained = set(allowed)
     if gained:
         flags["artifacts_found"] = found + len(gained)
+    if "ghost_mail" in gained:
+        new["ward"] = int(new.get("ward", 0) or 0) + GHOST_MAIL_WARD
     if "stone_heart" in gained:
         new["max_hp"] = int(new["max_hp"]) + STONE_HEART_HP
         new["hp"] = int(new["hp"]) + STONE_HEART_HP

@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import SceneArt from './SceneArt.jsx'
+import Cost, { gearStats } from './Cost.jsx'
+import Expedition from './Expedition.jsx'
 
 const B_ORDER = ['tavern', 'throne', 'forge', 'mage_tower']
 
-export default function CityScreen({ city, user, dungeons, busy, error, onSend, onNewSeeker, onBuild, onHire, onCraft, onEnchant, onDaily, isAdmin, onAdmin, tutorial, onDemolish }) {
+export default function CityScreen({ city, user, dungeons, busy, error, onSend, onNewSeeker, onBuild, onHire, onCraft, onEnchant, onDaily, isAdmin, onAdmin, tutorial, onDemolish, onChest, onRefine }) {
+  const [packing, setPacking] = useState(false)
   const [tab, setTab] = useState('city')
   const ruins = city.ruins || []
   const ruinsLeft = ruins.filter((r) => !r.cleared).length
@@ -52,6 +55,9 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
         {(city.buildings || {}).mage_tower > 0 && (
           <button className={tab === 'tower' ? 'primary' : ''} onClick={() => setTab('tower')}>Башня</button>
         )}
+        {(city.recipes || []).length > 0 && (
+          <button className={tab === 'craft' ? 'primary' : ''} onClick={() => setTab('craft')}>Мастерская</button>
+        )}
         <button className={tab === 'store' ? 'primary' : ''} onClick={() => setTab('store')}>Склад</button>
       </div>
 
@@ -81,11 +87,10 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
                 {up && !up.locked && (
                   <div>
                     <p className="muted">До ур.{up.level}: {up.desc}</p>
-                    <p className="muted">
-                      Цена: {Object.entries(up.cost_named).map(([n, c]) => `${n} × ${c}`).join(', ')}
-                      {up.gold > 0 && `${Object.keys(up.cost_named).length ? ', ' : ''}золото ${up.gold}`}
-                    </p>
-                    <button disabled={busy} onClick={() => onBuild(bid)}>▸ Улучшить</button>
+                    <Cost list={up.cost_list} />
+                    <button disabled={busy || up.affordable === false} onClick={() => onBuild(bid)}>
+                      {up.affordable === false ? 'Не хватает материалов' : '▸ Улучшить'}
+                    </button>
                   </div>
                 )}
                 {!up && lvl > 0 && <p className="muted">Служит городу исправно.</p>}
@@ -132,15 +137,8 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
           {(city.craftable || []).map((it) => (
             <div className="panel" key={it.id}>
               <span className="panel-title">{it.name}{!it.available && ` · кузница ур.${it.forge}`}</span>
-              <p className="muted">
-                {it.def != null && `Защита +${it.def} · прочность ${it.dur}`}
-                {it.atk != null && `Атака +${it.atk} · урон ${it.dmg}`}
-                {it.capacity != null && `Рюкзак +${it.capacity} слота`}
-              </p>
-              <p className="muted">
-                Цена: {Object.entries(it.cost_named).map(([n, c]) => `${n} × ${c}`).join(', ')}
-                {it.gold > 0 && `, золото ${it.gold}`}
-              </p>
+              <p className="muted">{gearStats(it)}{it.dur ? ` · прочность ${it.dur}` : ''}</p>
+              <Cost list={it.cost_list} />
               {it.available && craftFor !== it.id && (
                 <button disabled={busy} onClick={() => setCraftFor(it.id)}>▸ Ковать</button>
               )}
@@ -167,10 +165,7 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
             <div className="panel" key={it.id}>
               <span className="panel-title">{it.name}{!it.available && ` · башня ур.${it.tower}`}</span>
               <p className="muted">{it.effect}</p>
-              <p className="muted">
-                Цена: {Object.entries(it.cost_named).map(([n, c]) => `${n} × ${c}`).join(', ')}
-                {it.gold > 0 && `, золото ${it.gold}`}
-              </p>
+              <Cost list={it.cost_list} />
               {it.available && enchantFor !== it.id && (
                 <button disabled={busy} onClick={() => setEnchantFor(it.id)}>▸ Заказать</button>
               )}
@@ -190,6 +185,24 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
         </div>
       )}
 
+      {tab === 'craft' && (
+        <div className="log" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p className="muted">Здания перерабатывают сырьё в материалы для высоких уровней построек.</p>
+          {(city.recipes || []).map((r) => (
+            <div className="panel" key={r.id}>
+              <span className="panel-title">{r.out_name}{!r.available && ` · ${r.building_name} ур.${r.level}`}</span>
+              <p className="muted">{r.who}</p>
+              <Cost list={r.cost_list} />
+              {r.available && (
+                <button disabled={busy || !r.cost_list.every((c) => c.ok)} onClick={() => onRefine(r.id)}>
+                  ▸ Сделать 1
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {tab === 'store' && (
         <div className="log">
           <div className="panel">
@@ -200,6 +213,18 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
           {Object.entries(city.resources_named || {}).map(([n, c]) => (
             <span key={n} className="inv-item">{n} × {c}</span>
           ))}
+          </div>
+          <div className="panel" style={{ marginTop: 10 }}>
+            <span className="panel-title">Королевский сундук ({(city.chest || []).length})</span>
+            {(city.chest || []).length === 0 && (
+              <p className="muted">Пуст. Снятое с искателей кладётся сюда при сборах в поход.</p>
+            )}
+            {(city.chest || []).map((c, i) => (
+              <div key={c.uid || i} className="pack-row">
+                <span>{c.name}</span>
+                {c.kind === 'gear' && <i className="muted">{gearStats(c)}</i>}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -249,21 +274,18 @@ export default function CityScreen({ city, user, dungeons, busy, error, onSend, 
         {city.runs_left === 0 && (
           <p className="error">Попытки исчерпаны. Следующая через {city.next_run_in}.</p>
         )}
-        {seekers.filter((s) => s.status === 'idle').map((s) => (
-          <button key={s.id} disabled={busy} style={{ marginRight: 8, marginBottom: 6 }}
-            onClick={() => onSend(s.id, dungeon)}>
-            ▸ {s.name} · {s.cls_name} ур.{s.level} · выжил {s.runs_survived}
-            {s.equipment?.weapon && ` · ⚔${s.equipment.weapon.name}`}
-            {s.equipment?.armor && ` · 🛡${s.equipment.armor.name}`}
-          </button>
-        ))}
-        {seekers.length < city.seeker_slots && (
-          <button className="primary" disabled={busy} onClick={() => onNewSeeker(dungeon)}>
-            ▸ НОВЫЙ ИСКАТЕЛЬ
+        {!packing && (
+          <button className="primary" disabled={busy || city.runs_left === 0} onClick={() => setPacking(true)}>
+            ▸ ВОЙТИ В ПОДЗЕМЕЛЬЕ
           </button>
         )}
-        {seekers.length >= city.seeker_slots && seekers.every((s) => s.status !== 'idle') && (
-          <p className="muted">Свободных искателей нет.</p>
+        {packing && (
+          <Expedition city={city} busy={busy}
+            dungeon={(dungeons || []).find((d) => d.id === dungeon)}
+            onChest={onChest}
+            onClose={() => setPacking(false)}
+            onEnter={(sid, party) => { setPacking(false); onSend(sid, dungeon, party) }}
+            onNewSeeker={(party) => { setPacking(false); onNewSeeker(dungeon, party) }} />
         )}
       </div>
       )}

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import SceneArt from './SceneArt.jsx'
+import DummyFight from './DummyFight.jsx'
 
 /* Скриптованный пролог The Last King: письмо, руины, окровавленная корона.
    Только кнопки, ноль LLM. У каждой кнопки — свой ответ следующей сцены. */
@@ -88,10 +89,17 @@ const PART2 = [
       'окна светятся все, Пип прибивает над дверью вывеску и чуть не падает с лестницы от гордости.\n\n' +
       'Теперь ты знаешь, как живёт этот город: всё добытое — руками ли, из подземелий ли — ложится ' +
       'на склад, а со склада встают стены.\n\n' +
-      '«Неплохо для первого дня короны, — Одо вытирает руки. — А теперь смотри-ка в окно».',
+      '«Неплохо для первого дня короны, — Одо вытирает руки. — Но корону носят не только руками. Пошли во двор».',
     actions: [
-      { t: 'Посмотреть в окно', lead: null },
+      { t: 'Выйти во двор', lead: null },
     ],
+  },
+  {
+    dummy: true,
+    text: 'Во дворе Пип уже вкопал столб и повесил на него соломенный манекен в дырявом шлеме. ' +
+      'К «руке» манекена привязано бревно, к бревну — верёвка, к верёвке — очень довольный Пип.\n\n' +
+      '«Прежде чем посылать людей вниз, пойми, как там дерутся, — Одо суёт тебе учебный меч. — ' +
+      'Сначала бросают инициативу: кто раньше бьёт. Потом каждый в свой черёд. Давай».',
   },
   {
     text: 'По дороге к таверне идут люди. Немного — двое, трое. Оборванные, злые, с оружием. ' +
@@ -112,6 +120,7 @@ export default function PrologueScreen({ busy, part = 1, onDone }) {
   const s = STEPS[step]
   const last = step === STEPS.length - 1
   const text = (lead ? lead + '\n\n' : '') + s.text
+  const next = (l = null) => { setLead(l); setStep(step + 1) }
 
   return (
     <div className="screen">
@@ -121,12 +130,16 @@ export default function PrologueScreen({ busy, part = 1, onDone }) {
           {s.art && <SceneArt tag={s.art} />}
           <div className="log-entry">
             <div className="log-narration">{text}</div>
+            {s.dummy && (
+              <DummyFight key={step}
+                onDone={() => next('Пип утирает пот рукавом, манекен лишился шлема. Ты бросаешь взгляд в окно таверны.')} />
+            )}
           </div>
         </div>
       </div>
 
       <div className="actions">
-        {!last && s.actions.map((a) => (
+        {!last && !s.dummy && s.actions.map((a) => (
           <button key={a.t} disabled={busy}
             onClick={() => { setLead(a.lead); setStep(step + 1) }}>{a.t}</button>
         ))}

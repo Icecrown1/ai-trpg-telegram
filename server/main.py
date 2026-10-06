@@ -25,6 +25,8 @@ _MIGRATIONS = (
     "ALTER TABLE seekers ADD COLUMN talents JSON",
     "ALTER TABLE seekers ADD COLUMN stat_points INTEGER",
     "ALTER TABLE seekers ADD COLUMN talent_points INTEGER",
+    "ALTER TABLE seekers ADD COLUMN gear_bag JSON",
+    "ALTER TABLE cities ADD COLUMN chest JSON",
 )
 for _ddl in _MIGRATIONS:
     try:

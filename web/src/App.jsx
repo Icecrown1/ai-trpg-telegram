@@ -63,7 +63,32 @@ export default function App() {
     }
   }
 
-  const handleSendSeeker = (seekerId, dungeonId) => handleCreate({ seeker_id: seekerId, dungeon: dungeonId })
+  const [pendingParty, setPendingParty] = useState(null)
+  const handleSendSeeker = (seekerId, dungeonId, companions) =>
+    handleCreate({ seeker_id: seekerId, dungeon: dungeonId, companions })
+
+  const handleChest = async (body) => {
+    setBusy(true); setError('')
+    try { setCity(await api.chest(body)) }
+    catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }
+
+  const handleRefine = async (recipeId) => {
+    setBusy(true); setError('')
+    try { setCity(await api.refine(recipeId)) }
+    catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }
+
+  const handleGear = async (body) => {
+    setBusy(true); setError('')
+    try {
+      const { state } = await api.gear(run.run_id, body)
+      setRun((r) => ({ ...r, state }))
+    } catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }
 
   const handleBuild = async (building) => {
     setBusy(true); setError('')
@@ -231,7 +256,8 @@ export default function App() {
     screen = city ? (
       <CityScreen city={city} user={user} dungeons={meta?.dungeons} busy={busy} error={error}
         isAdmin={isAdmin} onAdmin={handleAdmin}
-        onSend={handleSendSeeker} onNewSeeker={(d) => { setDungeon(d); setCreating(true); setError('') }}
+        onSend={handleSendSeeker} onChest={handleChest} onRefine={handleRefine}
+        onNewSeeker={(d, party) => { setDungeon(d); setPendingParty(party ?? null); setCreating(true); setError('') }}
         onBuild={handleBuild} onHire={handleHire} onCraft={handleCraft}
         onEnchant={handleEnchant} onDaily={handleDaily} />
     ) : (
@@ -240,7 +266,7 @@ export default function App() {
   } else if (!run && creating) {
     screen = (
       <CharacterCreate meta={meta} user={user} busy={busy} error={error}
-        onCreate={(body) => handleCreate({ ...body, dungeon })}
+        onCreate={(body) => handleCreate({ ...body, dungeon, ...(pendingParty ? { companions: pendingParty } : {}) })}
         onBack={() => setCreating(false)} />
     )
   } else if (run.status === 'dead') {
@@ -262,6 +288,7 @@ export default function App() {
         onSpendStat={handleSpendStat}
         onPickTalent={handlePickTalent}
         onPack={handlePack}
+        onGear={handleGear}
       />
     )
   }

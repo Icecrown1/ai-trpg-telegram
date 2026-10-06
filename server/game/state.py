@@ -73,18 +73,17 @@ def apply_delta(state: dict, delta: dict) -> dict:
             pass
 
     # ресурсы: resources_add / resources_remove = {"wood": 2}; рюкзак ограничен вместимостью
-    from .resources import RESOURCES, backpack_load
-    bp = state.setdefault("backpack", {"capacity": 8, "res": {}})
+    from .resources import RESOURCES, room_for, BACKPACK_CAPACITY_DEFAULT
+    bp = state.setdefault("backpack", {"capacity": BACKPACK_CAPACITY_DEFAULT, "res": {}})
     if isinstance(delta.get("resources_add"), dict):
         for rid, cnt in delta["resources_add"].items():
-            if rid not in RESOURCES:
-                continue
+            if rid not in RESOURCES or RESOURCES[rid].get("crafted"):
+                continue  # крафтовое из подземелья не выносят — его делают в городе
             try:
                 cnt = max(0, int(cnt))
             except (TypeError, ValueError):
                 continue
-            free = bp["capacity"] - backpack_load(bp["res"])
-            take = min(cnt, max(0, free))
+            take = min(cnt, room_for(bp, rid))
             if take:
                 bp["res"][rid] = bp["res"].get(rid, 0) + take
     if isinstance(delta.get("resources_remove"), dict):
@@ -97,9 +96,37 @@ def apply_delta(state: dict, delta: dict) -> dict:
                 if bp["res"][rid] == 0:
                     del bp["res"][rid]
 
-    # износ снаряжения: equipment_damage: "armor" | "weapon"
+    # находки-снаряжение: в сумку (лимит), лишнее остаётся лежать на полу этого места
+    from .gear import sanitize_gear, BAG_LIMIT
+    if isinstance(delta.get("gear_add"), list):
+        bag = state.setdefault("bag", [])
+        have = {_norm(b.get("name")) for b in bag} | {
+            _norm((v or {}).get("name")) for v in (state.get("equipment") or {}).values() if isinstance(v, dict)}
+        for raw in delta["gear_add"][:4]:
+            it = sanitize_gear(raw, state.get("depth", 1))
+            if not it or _norm(it["name"]) in have:
+                continue
+            have.add(_norm(it["name"]))
+            if len(bag) < BAG_LIMIT:
+                bag.append(it)
+            else:
+                place = (state.get("scene") or {}).get("place") or state.get("location")
+                fl = state.get("floor") or {}
+                if fl.get("place") != place:
+                    fl = {"place": place, "res": {}, "items": [], "gear": []}
+                fl.setdefault("gear", []).append(it)
+                state["floor"] = fl
+
+    # синие сердца: редкое благословение мастера (не больше одного за ход)
+    if delta.get("ward_add"):
+        try:
+            state["ward"] = min(6, int(state.get("ward", 0) or 0) + max(0, min(1, int(delta["ward_add"]))))
+        except (TypeError, ValueError):
+            pass
+
+    # износ снаряжения: equipment_damage: "armor" | "weapon" | "head" | "offhand"
     slot = delta.get("equipment_damage")
-    if slot in ("armor", "weapon"):
+    if slot in ("armor", "weapon", "head", "offhand"):
         eq = state.setdefault("equipment", {})
         item = eq.get(slot)
         if item:
@@ -117,6 +144,24 @@ def apply_delta(state: dict, delta: dict) -> dict:
                         m["hp"] = max(0, min(int(m.get("max_hp", 8)), int(m.get("hp", 0)) + int(dhp)))
                     except (TypeError, ValueError):
                         pass
+    # завербованный враг или спасённый пленник встаёт в строй
+    if isinstance(delta.get("party_add"), list):
+        names = {m.get("name") for m in party}
+        for m in delta["party_add"][:2]:
+            if not isinstance(m, dict) or not str(m.get("name") or "").strip():
+                continue
+            name = str(m["name"]).strip()[:32]
+            if name in names or len(party) >= 4:
+                continue
+            try:
+                mhp = max(1, min(20, int(m.get("max_hp") or m.get("hp") or 8)))
+            except (TypeError, ValueError):
+                mhp = 8
+            party.append({"name": name, "cls": str(m.get("cls") or "")[:16],
+                          "cls_name": str(m.get("cls_name") or m.get("cls") or "союзник")[:24],
+                          "hp": mhp, "max_hp": mhp, "loyalty": 0, "recruited": True})
+            names.add(name)
+
     if isinstance(delta.get("party_remove"), list):
         gone = {str(x) for x in delta["party_remove"]}
         state["party"] = [m for m in party if m.get("name") not in gone]

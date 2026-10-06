@@ -94,11 +94,35 @@ def _finish_seeker(db: Session, run: Run, died: bool, final_state: dict):
         s.max_hp = final_state.get("max_hp", s.max_hp)
         s.runs_survived += 1
         s.equipment = final_state.get("equipment", s.equipment) or {}  # износ/поломки сохраняются
+        s.gear_bag = list(final_state.get("bag") or [])
         s.inventory = state_mod.dedupe_items(final_state.get("inventory", s.inventory) or [])  # без дублей
         s.stats = final_state.get("stats", s.stats)
         s.talents = final_state.get("talents", s.talents) or []
         s.stat_points = int(final_state.get("stat_points", 0))
         s.talent_points = int(final_state.get("talent_points", 0))
+
+
+import re as _re
+_EXIT_INTENT = _re.compile(r"(к|на) выход|наружу|назад к врат|обратно к врат|вернуться к врат|"
+                           r"покинуть|уйти из|выбрат\w* наружу|эвакуац|обратно на поверхност|к свету", _re.I)
+EARLY_EXIT_TURNS = 6
+EARLY_EXIT_CHANCE = 75  # %
+
+
+def _early_exit_note(st: dict, turn_count: int, text: str) -> str:
+    """Игрок на первой глубине едва вошёл и уже бежит к выходу — чаще всего путь перекрыт.
+    Событие разыгрывается один раз за забег; флаг ставится в st и сохранится с ходом."""
+    flags = st.setdefault("flags", {})
+    if (int(st.get("depth", 1)) != 1 or turn_count > EARLY_EXIT_TURNS or flags.get("early_exit_rolled")
+            or not _EXIT_INTENT.search(text or "")):
+        return ""
+    import secrets
+    flags["early_exit_rolled"] = True
+    if secrets.randbelow(100) >= EARLY_EXIT_CHANCE:
+        return ""
+    what = "вход завален свежим обвалом — нужен обход" if secrets.randbelow(2) else \
+        "у выхода сильный патруль (тяжелее обычных врагов яруса) — пройти можно только боем или хитростью"
+    return f"\n\n[для мастера — ранний отход: {what}. Выйти в этот ход нельзя.]"
 
 
 class _TurnView:
@@ -142,10 +166,19 @@ def _apply_gm_result(db: Session, run: Run, player_input: str, result: dict) -> 
     from ..game import artifacts as art
     level_before = int(run.state.get("level", 1))
     from ..game.resources import reroute_materials
+    from ..game.resources import clamp_by_depth
     delta = reroute_materials(result.get("state_delta") or {})
+    delta = clamp_by_depth(delta, run.state.get("depth", 1))
     delta = art.adjust_delta(run.state, delta)
-    new_state = state_mod.apply_delta(copy.deepcopy(run.state), delta)
+    from ..game import combat as combat_mod
+    base = copy.deepcopy(run.state)
+    delta, ward_note = combat_mod.absorb_with_ward(base, delta, result.get("rolls") or [])
+    new_state = state_mod.apply_delta(base, delta)
     new_state = art.apply_transitions(run.state, new_state)
+    combat_note = combat_mod.apply(new_state, delta.get("combat"), new_state.get("depth", 1))
+    for note in (ward_note, combat_note):
+        if note:
+            result["narration"] = result.get("narration", "").rstrip() + "\n\n" + note
     if new_state.get("level", 1) > level_before:
         note = f"\n\n⬆ УРОВЕНЬ {new_state['level']}! Раны затягиваются. +1 очко характеристик"
         if new_state["level"] % 2 == 0:
@@ -301,6 +334,7 @@ class NewRunIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=24)
     race: str | None = None
     cls: str | None = Field(default=None, alias="class")
+    companions: list[str] | None = None  # имена соратников из таверны; None — идут все
 
     class Config:
         populate_by_name = True
@@ -411,13 +445,23 @@ def new_run(body: NewRunIn, tg=Depends(get_tg_user), db: Session = Depends(get_d
             raise HTTPException(422, "Неизвестная раса или класс")
         seeker = Seeker(user_id=user.id, name=char["name"], race=char["race"], cls=char["class"],
                         level=1, xp=0, stats=char["stats"], max_hp=char["max_hp"],
-                        inventory=list(char["inventory"]))
+                        inventory=list(char["inventory"]), equipment=dict(char["equipment"]),
+                        gear_bag=list(char.get("bag") or []))
         db.add(seeker)
         db.flush()
+    cflags = city.flags or {}
+    char["world"] = {"dwarf_saved": bool(cflags.get("dwarf_saved")),
+                     "mage_saved": bool(cflags.get("mage_saved"))}
     seeker.status = "in_run"
-    # дружина из таверны идёт с искателем; город на время пустеет
-    char["party"] = [dict(c) for c in (city.companions or [])]
-    city.companions = []
+    # с искателем идут выбранные соратники (по умолчанию — все); остальные ждут в таверне
+    pool = list(city.companions or [])
+    if body.companions is None:
+        going = pool
+    else:
+        want = set(body.companions)
+        going = [c for c in pool if c.get("name") in want]
+    char["party"] = [dict(c) for c in going]
+    city.companions = [c for c in pool if c not in going]
 
     run = Run(user_id=user.id, seeker_id=seeker.id, state=char, dungeon=body.dungeon)
     db.add(run)
@@ -460,10 +504,15 @@ def make_turn(run_id: int, body: TurnIn, tg=Depends(get_tg_user), db: Session = 
 
     st = copy.deepcopy(run.state)
     summary, dungeon_id = run.summary or "", run.dungeon or DEFAULT_DUNGEON
+    st["turn_no"] = run.turn_count
+    player_text = body.text.strip()
+    early = _early_exit_note(st, run.turn_count, player_text)
+    if early:
+        player_text = player_text + early
     recent = [_TurnView(t) for t in recent]
     _release(db)
     try:
-        result = master.run_turn(st, summary, recent, body.text.strip(), dungeon_id=dungeon_id)
+        result = master.run_turn(st, summary, recent, player_text, dungeon_id=dungeon_id)
     except Exception:
         import traceback
         traceback.print_exc()  # причина сбоя — в консоль Replit
@@ -474,7 +523,9 @@ def make_turn(run_id: int, body: TurnIn, tg=Depends(get_tg_user), db: Session = 
     run = db.query(Run).filter(Run.id == run_id).first()
     if run.status != "active":
         raise HTTPException(409, "Этот забег уже окончен.")
-    run.state = st  # броски могли пометить флаги (эхо-раковина) — они часть хода
+    if early:
+        result["extracted"] = False  # путь перекрыт — уйти в этот ход нельзя
+    run.state = st  # броски могли пометить флаги (эхо-раковина, засада) — они часть хода
     return _apply_gm_result(db, run, body.text.strip(), result)
 
 
@@ -544,7 +595,7 @@ class PackIn(BaseModel):
 def pack(run_id: int, body: PackIn, tg=Depends(get_tg_user), db: Session = Depends(get_db)):
     """Разбор рюкзака без хода мастера: выбросить на пол текущего места или подобрать обратно.
     Пол помнит только текущее место — ушёл дальше, брошенное осталось там."""
-    from ..game.resources import RESOURCES, backpack_load
+    from ..game.resources import RESOURCES, room_for, BACKPACK_CAPACITY_DEFAULT
     user = _get_or_create_user(db, tg)
     run = db.query(Run).filter(Run.id == run_id, Run.user_id == user.id, Run.status == "active").first()
     if not run:
@@ -554,7 +605,7 @@ def pack(run_id: int, body: PackIn, tg=Depends(get_tg_user), db: Session = Depen
     floor = st.get("floor") or {}
     if floor.get("place") != place:
         floor = {"place": place, "res": {}, "items": []}
-    bp = st.setdefault("backpack", {"capacity": 8, "res": {}})
+    bp = st.setdefault("backpack", {"capacity": BACKPACK_CAPACITY_DEFAULT, "res": {}})
     inv = st.setdefault("inventory", [])
     if body.action == "drop":
         if body.res:
@@ -575,7 +626,7 @@ def pack(run_id: int, body: PackIn, tg=Depends(get_tg_user), db: Session = Depen
         if body.res:
             if int(floor["res"].get(body.res, 0)) <= 0:
                 raise HTTPException(409, "Здесь этого нет")
-            if backpack_load(bp["res"]) >= int(bp.get("capacity", 8)):
+            if room_for(bp, body.res) <= 0:
                 raise HTTPException(409, "Рюкзак полон — сначала выброси что-нибудь")
             if body.res not in RESOURCES:
                 raise HTTPException(422, "Неизвестный ресурс")
@@ -596,6 +647,57 @@ def pack(run_id: int, body: PackIn, tg=Depends(get_tg_user), db: Session = Depen
         raise HTTPException(422, "Неизвестное действие")
     st["floor"] = floor
     st["inventory"] = state_mod.dedupe_items(inv)
+    run.state = st
+    db.commit()
+    return {"state": run.state}
+
+
+class GearIn(BaseModel):
+    action: str             # equip | unequip | drop | take
+    uid: str | None = None  # вещь из сумки / с пола
+    slot: str | None = None # для unequip
+
+
+@router.post("/run/{run_id}/gear")
+def run_gear(run_id: int, body: GearIn, tg=Depends(get_tg_user), db: Session = Depends(get_db)):
+    """Сменить снаряжение посреди забега: надеть, снять в сумку, бросить на пол, подобрать. Без хода мастера."""
+    from ..game import gear as G
+    user = _get_or_create_user(db, tg)
+    run = db.query(Run).filter(Run.id == run_id, Run.user_id == user.id, Run.status == "active").first()
+    if not run:
+        raise HTTPException(404, "Активный забег не найден")
+    st = copy.deepcopy(run.state)
+    eq = st.setdefault("equipment", {})
+    bag = st.setdefault("bag", [])
+    place = (st.get("scene") or {}).get("place") or st.get("location")
+    floor = st.get("floor") or {}
+    if floor.get("place") != place:
+        floor = {"place": place, "res": {}, "items": [], "gear": []}
+    floor.setdefault("gear", [])
+    try:
+        if body.action == "equip":
+            G.equip(eq, bag, body.uid)
+        elif body.action == "unequip":
+            G.unequip(eq, bag, body.slot)
+        elif body.action == "drop":
+            it = next((b for b in bag if b.get("uid") == body.uid), None)
+            if not it:
+                raise G.GearError("Этой вещи нет в сумке")
+            bag.remove(it)
+            floor["gear"].append(it)
+        elif body.action == "take":
+            it = next((b for b in floor["gear"] if b.get("uid") == body.uid), None)
+            if not it:
+                raise G.GearError("Здесь этого нет")
+            if len(bag) >= G.BAG_LIMIT:
+                raise G.GearError(f"Сумка полна ({G.BAG_LIMIT} вещей)")
+            floor["gear"].remove(it)
+            bag.append(it)
+        else:
+            raise G.GearError("Неизвестное действие")
+    except G.GearError as e:
+        raise HTTPException(409, str(e))
+    st["floor"] = floor
     run.state = st
     db.commit()
     return {"state": run.state}
