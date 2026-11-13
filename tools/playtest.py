@@ -39,6 +39,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from server.main import app  # noqa: E402
 from server.game.resources import material_of, RESOURCES  # noqa: E402
 import server.game.master as master  # noqa: E402
+from tools.playtest_policy import PLAYER_PROMPT, pick_action  # noqa: E402
 
 # $ за 1М токенов: (вход, вход из кэша, выход, запись в кэш). Проверяй актуальность на сайтах вендоров.
 PRICES = {
@@ -103,13 +104,6 @@ master._create = _spy_an
 
 # --- игрок-нейросеть
 PLAYER = {"mode": "rules", "history": []}
-PLAYER_PROMPT = (
-    "Ты — опытный игрок в настольные RPG, играешь в текстовую extraction-RPG на русском. Цель забега: "
-    "добыть ресурсы для своего города, найти ценности, выжить и выбраться через точку выхода. Играй как живой "
-    "человек: используй окружение, хитрости, разговоры с NPC, засады, торг; иногда рискуй ради добычи, но береги "
-    "жизнь. Кнопки — только подсказки, чаще пиши свою заявку. Отвечай ОДНОЙ заявкой от первого лица, 1-2 "
-    "предложения, без кавычек и пояснений."
-)
 
 
 def llm_pick(state, last_narr, suggestions, turn, max_turns):
@@ -139,47 +133,7 @@ def llm_pick(state, last_narr, suggestions, turn, max_turns):
     text = text.strip().strip("«»\"").split("\n")[0][:300]
     return text or (suggestions[0] if suggestions else "Осматриваюсь")
 
-LOOT_WORDS = ("обыск", "осмотр", "взять", "подобр", "развед", "разделат", "сундук", "ящик", "тайник",
-              "вскры", "собрат", "добы", "руб", "копат", "шкур", "исслед")
-FIGHT_WORDS = ("атак", "удар", "бить", "руб", "стрел", "напас", "рубануть", "ударить")
-EXIT_WORDS = ("выход", "выбрат", "подъём", "подъемник", "эвакуац", "врат", "уйти", "отступ", "тракт",
-              "опушк", "жёлоб", "желоб", "окно")
-
-CUSTOM = [
-    "Обыскиваю всё вокруг и забираю полезное, особенно материалы для города",
-    "Разделываю убитых тварей: снимаю шкуры, срезаю кости",
-    "Ищу сокровищницу этой глубины — прислушиваюсь к сквозняку и ищу блеск",
-    "Спускаюсь глубже",
-    "Готовлю засаду в тени и бью первым, когда враг подойдёт",
-    "Атакую размашистым ударом всех ближайших врагов разом",
-    "Осторожно проверяю пол и стены на ловушки, прежде чем идти дальше",
-    "Заговариваю с ближайшим существом и пытаюсь выторговать сведения",
-]
 LATIN = re.compile(r"\b(?!d\d|\d*d\d)[A-Za-z]{3,}\b")
-
-
-def pick_action(state, suggestions, turn, max_turns, rng):
-    hp_pct = state["hp"] / max(1, state["max_hp"])
-    load = sum((state.get("backpack") or {}).get("res", {}).values())
-    cap = (state.get("backpack") or {}).get("capacity", 8)
-    low = [s.lower() for s in suggestions]
-
-    if hp_pct <= 0.35 or load >= cap or turn >= int(max_turns * 0.8):
-        for s, l in zip(suggestions, low):
-            if any(w in l for w in EXIT_WORDS):
-                return s, "план: уходить (мало HP / полный рюкзак / время)"
-        return "Иду к ближайшему выходу из подземелья и выбираюсь наружу с добычей", "план: уходить (своя заявка)"
-    if turn % 5 == 0:
-        return rng.choice(CUSTOM), "свободная заявка (проверка free-text)"
-    for s, l in zip(suggestions, low):
-        if any(w in l for w in LOOT_WORDS):
-            return s, "кнопка: добыча"
-    for s, l in zip(suggestions, low):
-        if any(w in l for w in FIGHT_WORDS):
-            return s, "кнопка: бой"
-    if suggestions:
-        return rng.choice(suggestions), "кнопка: случайная"
-    return rng.choice(CUSTOM), "свободная заявка (кнопок нет)"
 
 
 def fmt_roll(r):

@@ -1,0 +1,4 @@
+-r ../server/requirements.txt
+mcp>=1.28,<2
+httpx[socks]>=0.27,<1
+openai>=1.82,<4
